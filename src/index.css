@@ -1,1 +1,125 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Sprig design system.
+ * Warm cream, forest greens, terracotta and gold accents. Manrope sans, Fraunces display.
+ */
+
+@theme inline {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-forest: var(--forest);
+  --color-forest-soft: var(--forest-soft);
+  --color-mint: var(--mint);
+  --color-sage: var(--sage);
+  --color-terracotta: var(--terracotta);
+  --color-gold: var(--gold);
+  --color-cream: var(--cream);
+  --color-ink: var(--ink);
+  --color-bark: var(--bark);
+}
+
+:root {
+  --radius: 0.875rem;
+
+  /* Sprig palette — mintier, botanical, restrained */
+  --cream: oklch(0.975 0.012 140);      /* cool cream paper */
+  --paper: oklch(0.965 0.014 145);
+  --ink: oklch(0.26 0.02 160);
+  --forest: oklch(0.56 0.075 168);      /* mint-leaning green */
+  --forest-soft: oklch(0.7 0.055 165);
+  --mint: oklch(0.9 0.045 165);
+  --sage: oklch(0.82 0.04 155);
+  --terracotta: oklch(0.7 0.13 45);
+  --gold: oklch(0.78 0.11 88);
+  --bark: oklch(0.44 0.02 130);
+
+  --background: var(--cream);
+  --foreground: var(--ink);
+  --card: oklch(0.985 0.008 92);
+  --card-foreground: var(--ink);
+  --popover: oklch(0.99 0.006 92);
+  --popover-foreground: var(--ink);
+  --primary: var(--forest);
+  --primary-foreground: oklch(0.985 0.008 92);
+  --secondary: oklch(0.94 0.02 100);
+  --secondary-foreground: var(--ink);
+  --muted: oklch(0.93 0.015 100);
+  --muted-foreground: oklch(0.45 0.02 130);
+  --accent: var(--mint);
+  --accent-foreground: var(--forest);
+  --destructive: oklch(0.6 0.2 27);
+  --destructive-foreground: oklch(0.985 0.008 92);
+  --border: oklch(0.88 0.015 100);
+  --input: oklch(0.9 0.012 100);
+  --ring: var(--forest);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html, body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@keyframes sprig-draw {
+  from { stroke-dashoffset: var(--draw-length, 2000); }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes sprig-leaf-in {
+  0% { opacity: 0; transform: scale(0.4) rotate(-8deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes sprig-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--forest) 30%, transparent); }
+  50% { box-shadow: 0 0 0 14px color-mix(in oklab, var(--forest) 0%, transparent); }
+}
+
+@utility sprig-glow {
+  animation: sprig-pulse 2.6s ease-in-out infinite;
+}
