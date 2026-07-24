@@ -1,62 +1,232 @@
-import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Play, Check, Leaf } from "lucide-react";
+import { QuestionCard, type Question } from "../components/sprig/QuestionCard";
+import { supabase } from "../lib/supabase";
 
-const TOTAL_STEPS = 6; // video, slide, slide, ready, question, feedback
+// Topic I.I — The Psychology of Spending. Default until the dashboard links
+// into a specific topic; override with ?topic=<id> for testing other topics.
+const DEFAULT_TOPIC_ID = "b14567dc-5f0b-4dd3-9e95-9fd54ea4c949";
 
-const SLIDES = [
-  {
-    kicker: "Idea 01",
-    heading: "Banks don't just store your money.",
-    body: [
-      "When you deposit £100, the bank doesn't lock it in a vault with your name on it. Most of it is lent out to other people — for mortgages, cars, small businesses.",
-      "Your account balance is really a promise: the bank owes you that amount, on demand.",
-    ],
-  },
-  {
-    kicker: "Idea 02",
-    heading: "That's why interest exists.",
-    body: [
-      "The bank earns more from lending your money than it pays you for keeping it there. The difference is how it makes a profit.",
-      "It's also why savings accounts pay more when interest rates rise — the bank is earning more elsewhere, and passes a little of that on.",
-    ],
-  },
-];
+/* ---------- Data shapes + fetching ---------- */
 
-const QUESTION = {
-  prompt: "When you deposit money into a normal bank account, what mostly happens to it?",
-  options: [
-    "It sits untouched in a vault with your name on it.",
-    "The bank lends most of it out to other customers.",
-    "It's converted into gold and stored by the government.",
-    "It's invested in the stock market on your behalf.",
-  ],
-  correctIndex: 1,
-  explainCorrect:
-    "Right — banks keep only a small fraction on hand and lend the rest out. Your balance is a promise the bank owes you.",
-  explainWrong:
-    "Not quite — banks lend most deposits out to other customers. Only a small fraction is kept on hand for withdrawals.",
+type DbSlide = {
+  id: string;
+  order: number;
+  heading: string;
+  body: string;
 };
 
-function Lesson() {
-  const [step, setStep] = useState(0);
-  const [selected, setSelected] = useState<number | null>(null);
+type DbQuestion = {
+  id: string;
+  order: number | null;
+  question_type: "mcq" | "multi" | "num" | "text";
+  question_text: string;
+  options: string[];
+  correct_answer: string;
+  accepted_answers: string[] | null;
+  tolerance: number | null;
+  explanation: string | null;
+};
 
-  const isCompletion = step === 6;
-  const canPrev = step > 0 && step < 4;
-  const canNext = step < 3;
+type DbSubtopic = {
+  id: string;
+  title: string;
+  order: number;
+  slides: DbSlide[];
+  questions: DbQuestion[];
+};
+
+type DbTopic = {
+  id: string;
+  tier: number;
+  order: number;
+  title: string;
+  video_url: string | null;
+  subtopics: DbSubtopic[];
+};
+
+function mapQuestion(q: DbQuestion): Question {
+  const explanation = q.explanation ?? "";
+  if (q.question_type === "mcq") {
+    return {
+      question_type: "mcq",
+      prompt: q.question_text,
+      options: q.options,
+      correctIndex: parseInt(q.correct_answer, 10),
+      explanation,
+    };
+  }
+  if (q.question_type === "multi") {
+    return {
+      question_type: "multi",
+      prompt: q.question_text,
+      options: q.options,
+      correctIndices: JSON.parse(q.correct_answer),
+      explanation,
+    };
+  }
+  if (q.question_type === "num") {
+    return {
+      question_type: "num",
+      prompt: q.question_text,
+      correctValue: parseFloat(q.correct_answer),
+      tolerance: q.tolerance,
+      explanation,
+    };
+  }
+  return {
+    question_type: "text",
+    prompt: q.question_text,
+    acceptedAnswers: q.accepted_answers ?? [q.correct_answer],
+    explanation,
+  };
+}
+
+function normalizeTopic(raw: DbTopic): DbTopic {
+  const subtopics = [...raw.subtopics]
+    .sort((a, b) => a.order - b.order)
+    .map((s) => ({
+      ...s,
+      slides: [...s.slides].sort((a, b) => a.order - b.order),
+      questions: [...s.questions].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    }));
+  return { ...raw, subtopics };
+}
+
+/* ---------- Flat step model ---------- */
+// The lesson is: one topic-level video, then each subtopic's slides -> a
+// "ready" screen -> that subtopic's questions, one after another.
+
+type ContentStep =
+  | { kind: "video" }
+  | { kind: "slide"; subtopicIndex: number; slide: DbSlide; slideIndex: number; totalSlides: number }
+  | { kind: "ready"; subtopicIndex: number }
+  | {
+      kind: "question";
+      subtopicIndex: number;
+      question: Question;
+      questionIndex: number;
+      totalQuestions: number;
+    };
+
+function buildSteps(topic: DbTopic): ContentStep[] {
+  const steps: ContentStep[] = [{ kind: "video" }];
+  topic.subtopics.forEach((sub, subtopicIndex) => {
+    sub.slides.forEach((slide, slideIndex) => {
+      steps.push({ kind: "slide", subtopicIndex, slide, slideIndex, totalSlides: sub.slides.length });
+    });
+    steps.push({ kind: "ready", subtopicIndex });
+    sub.questions.forEach((q, questionIndex) => {
+      steps.push({
+        kind: "question",
+        subtopicIndex,
+        question: mapQuestion(q),
+        questionIndex,
+        totalQuestions: sub.questions.length,
+      });
+    });
+  });
+  return steps;
+}
+
+function toRoman(num: number): string {
+  const table: [number, string][] = [
+    [1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"],
+    [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"],
+  ];
+  let n = num;
+  let result = "";
+  for (const [value, symbol] of table) {
+    while (n >= value) {
+      result += symbol;
+      n -= value;
+    }
+  }
+  return result || "I";
+}
+
+function Lesson() {
+  const [searchParams] = useSearchParams();
+  const topicId = searchParams.get("topic") ?? DEFAULT_TOPIC_ID;
+  const [topic, setTopic] = useState<DbTopic | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pointer, setPointer] = useState(0);
+  const [phase, setPhase] = useState<"content" | "feedback">("content");
+  const [correct, setCorrect] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTopic(null);
+    setLoadError(null);
+    setPointer(0);
+    setPhase("content");
+    supabase
+      .from("topics")
+      .select("*, subtopics(*, slides(*), questions(*))")
+      .eq("id", topicId)
+      .single()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error || !data) {
+          setLoadError(error?.message ?? "Topic not found.");
+          return;
+        }
+        setTopic(normalizeTopic(data as DbTopic));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [topicId]);
+
+  const steps = useMemo(() => (topic ? buildSteps(topic) : []), [topic]);
+  const totalSteps = steps.length;
+  const current = steps[pointer];
+  const isDone = topic !== null && pointer >= totalSteps;
+
+  const canPrev =
+    phase === "content" && !!current && (current.kind === "slide" || current.kind === "ready") && pointer > 0;
+  const canNext = phase === "content" && !!current && (current.kind === "video" || current.kind === "slide");
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "ArrowRight" && step < 3) setStep((s) => s + 1);
-      if (e.key === "ArrowLeft" && step > 0 && step < 4) setStep((s) => s - 1);
+      if (e.key === "ArrowRight" && canNext) setPointer((p) => Math.min(totalSteps - 1, p + 1));
+      if (e.key === "ArrowLeft" && canPrev) setPointer((p) => Math.max(0, p - 1));
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [step]);
+  }, [canPrev, canNext, totalSteps]);
 
-  if (isCompletion) {
-    return <CompletionScreen />;
+  if (loadError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background px-10 text-center text-foreground">
+        <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-terracotta">
+          Couldn't load this lesson
+        </span>
+        <p className="max-w-md text-[14.5px] leading-[1.7] text-muted-foreground">{loadError}</p>
+        <Link
+          to="/dashboard"
+          className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground underline-offset-4 hover:text-forest hover:underline"
+        >
+          ← Back to Journey
+        </Link>
+      </div>
+    );
+  }
+
+  if (!topic) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
+        <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+          Loading lesson…
+        </span>
+      </div>
+    );
+  }
+
+  if (isDone) {
+    return <CompletionScreen topicTitle={topic.title} />;
   }
 
   return (
@@ -70,20 +240,19 @@ function Lesson() {
         </Link>
 
         <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2">
-          <SprigProgress step={step} />
+          <SprigProgress pointer={pointer} total={totalSteps} />
         </div>
 
         <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
-          I · IV
+          {toRoman(topic.tier)} · {toRoman(topic.order)}
         </span>
       </header>
-
 
       <main className="relative mx-auto flex min-h-[calc(100vh-160px)] max-w-[1280px] items-center px-10">
         {canPrev && (
           <button
             aria-label="Previous"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            onClick={() => setPointer((p) => Math.max(0, p - 1))}
             className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground/70 transition-colors hover:text-forest"
           >
             <ChevronLeft className="h-8 w-8" strokeWidth={1.25} />
@@ -92,7 +261,7 @@ function Lesson() {
         {canNext && (
           <button
             aria-label="Next"
-            onClick={() => setStep((s) => Math.min(3, s + 1))}
+            onClick={() => setPointer((p) => Math.min(totalSteps - 1, p + 1))}
             className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/70 transition-colors hover:text-forest"
           >
             <ChevronRight className="h-8 w-8" strokeWidth={1.25} />
@@ -100,32 +269,52 @@ function Lesson() {
         )}
 
         <div className="mx-auto w-full max-w-[860px] py-16">
-          {step === 0 && <VideoStep />}
-          {step === 1 && <SlideStep slide={SLIDES[0]} index={1} />}
-          {step === 2 && <SlideStep slide={SLIDES[1]} index={2} />}
-          {step === 3 && (
+          {phase === "content" && current.kind === "video" && (
+            <VideoStep tier={topic.tier} topicOrder={topic.order} title={topic.title} />
+          )}
+          {phase === "content" && current.kind === "slide" && (
+            <SlideStep
+              slide={current.slide}
+              subtopicIndex={current.subtopicIndex}
+              totalSubtopics={topic.subtopics.length}
+              slideIndex={current.slideIndex}
+              totalSlides={current.totalSlides}
+            />
+          )}
+          {phase === "content" && current.kind === "ready" && (
             <ReadyStep
-              onBack={() => setStep(2)}
+              onBack={() => setPointer((p) => p - 1)}
               onStart={() => {
-                setSelected(null);
-                setStep(4);
+                setAttempt((a) => a + 1);
+                setPointer((p) => p + 1);
               }}
             />
           )}
-          {step === 4 && (
-            <QuestionStep
-              selected={selected}
-              onSelect={setSelected}
-              onSubmit={() => setStep(5)}
+          {phase === "content" && current.kind === "question" && (
+            <QuestionCard
+              key={attempt}
+              question={current.question}
+              kicker={`Subtopic ${current.subtopicIndex + 1} of ${topic.subtopics.length} · Question ${
+                current.questionIndex + 1
+              } of ${current.totalQuestions}`}
+              onSubmit={(isCorrect) => {
+                setCorrect(isCorrect);
+                setPhase("feedback");
+              }}
             />
           )}
-          {step === 5 && (
+          {phase === "feedback" && current.kind === "question" && (
             <FeedbackStep
-              correct={selected === QUESTION.correctIndex}
-              onContinue={() => setStep(6)}
+              correct={correct}
+              explanation={current.question.explanation}
+              isFinal={pointer === totalSteps - 1}
+              onContinue={() => {
+                setPhase("content");
+                setPointer((p) => p + 1);
+              }}
               onRetry={() => {
-                setSelected(null);
-                setStep(4);
+                setAttempt((a) => a + 1);
+                setPhase("content");
               }}
             />
           )}
@@ -134,9 +323,9 @@ function Lesson() {
 
       <footer className="mx-auto max-w-[1280px] px-10 pb-8">
         <div className="flex items-center justify-between font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
-          <span>How banks and money actually work</span>
+          <span>{topic.title}</span>
           <span>
-            {Math.min(step + 1, TOTAL_STEPS)} / {TOTAL_STEPS}
+            {Math.min(pointer + 1, totalSteps)} / {totalSteps}
           </span>
         </div>
       </footer>
@@ -146,7 +335,7 @@ function Lesson() {
 
 /* ---------- Steps ---------- */
 
-function VideoStep() {
+function VideoStep({ tier, topicOrder, title }: { tier: number; topicOrder: number; title: string }) {
   return (
     <div className="flex flex-col items-center text-center">
       <div className="relative aspect-video w-full overflow-hidden rounded-2xl border border-border bg-mint/40">
@@ -166,31 +355,39 @@ function VideoStep() {
       </div>
 
       <div className="mt-10 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-        Chapter I · Lesson IV
+        Chapter {toRoman(tier)} · Topic {toRoman(topicOrder)}
       </div>
-      <h1 className="mt-4 font-display text-[44px] font-normal leading-[1.05] tracking-[-0.03em]">
-        How banks and money <em className="italic text-forest">actually</em> work
-      </h1>
+      <h1 className="mt-4 font-display text-[44px] font-normal leading-[1.05] tracking-[-0.03em]">{title}</h1>
       <p className="mt-4 max-w-md text-[14.5px] leading-[1.7] text-muted-foreground">
-        A four-minute film. Watch it once, then move through two short ideas and a check-in.
+        A short film. Watch it once, then work through four short ideas and a check-in for each.
       </p>
     </div>
   );
 }
 
-function SlideStep({ slide, index }: { slide: (typeof SLIDES)[number]; index: number }) {
+function SlideStep({
+  slide,
+  subtopicIndex,
+  totalSubtopics,
+  slideIndex,
+  totalSlides,
+}: {
+  slide: DbSlide;
+  subtopicIndex: number;
+  totalSubtopics: number;
+  slideIndex: number;
+  totalSlides: number;
+}) {
   return (
     <div className="mx-auto max-w-[640px]">
       <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-        {slide.kicker} &nbsp;·&nbsp; {index} / {SLIDES.length}
+        Part {subtopicIndex + 1} of {totalSubtopics} &nbsp;·&nbsp; Slide {slideIndex + 1} / {totalSlides}
       </div>
       <h2 className="mt-6 font-display text-[42px] font-normal leading-[1.08] tracking-[-0.03em]">
         {slide.heading}
       </h2>
       <div className="mt-8 space-y-5 text-[16px] leading-[1.75] text-foreground/85">
-        {slide.body.map((p, i) => (
-          <p key={i}>{p}</p>
-        ))}
+        <p>{slide.body}</p>
       </div>
     </div>
   );
@@ -206,7 +403,7 @@ function ReadyStep({ onBack, onStart }: { onBack: () => void; onStart: () => voi
         you've <em className="italic text-forest">learned</em>?
       </h2>
       <p className="mt-5 max-w-md text-[14.5px] leading-[1.7] text-muted-foreground">
-        One quick question. No score, no punishment — just a check that the idea landed.
+        A few quick questions. No score, no punishment — just a check that the ideas landed.
       </p>
 
       <div className="mt-12 flex items-center gap-8">
@@ -220,62 +417,7 @@ function ReadyStep({ onBack, onStart }: { onBack: () => void; onStart: () => voi
           onClick={onStart}
           className="rounded-full bg-terracotta px-7 py-3 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--terracotta)_60%,transparent)] transition-transform hover:-translate-y-0.5"
         >
-          Start question
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function QuestionStep({
-  selected,
-  onSelect,
-  onSubmit,
-}: {
-  selected: number | null;
-  onSelect: (i: number) => void;
-  onSubmit: () => void;
-}) {
-  return (
-    <div>
-      <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-        Check-in · Question 1 of 1
-      </div>
-      <h2 className="mt-5 font-display text-[32px] font-normal leading-[1.2] tracking-[-0.02em]">
-        {QUESTION.prompt}
-      </h2>
-
-      <div className="mt-10 space-y-3">
-        {QUESTION.options.map((opt, i) => {
-          const isSel = selected === i;
-          return (
-            <button
-              key={i}
-              onClick={() => onSelect(i)}
-              className={`group flex w-full items-center gap-4 rounded-xl border px-5 py-4 text-left transition-colors ${
-                isSel ? "border-forest bg-forest/[0.06]" : "border-border hover:border-forest/40"
-              }`}
-            >
-              <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-[10px] uppercase tracking-wider transition-colors ${
-                  isSel ? "border-forest bg-forest text-primary-foreground" : "border-border text-muted-foreground"
-                }`}
-              >
-                {String.fromCharCode(65 + i)}
-              </span>
-              <span className="text-[15px] leading-[1.55] text-foreground/90">{opt}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-10 flex justify-end">
-        <button
-          disabled={selected === null}
-          onClick={onSubmit}
-          className="rounded-full bg-terracotta px-7 py-3 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--terracotta)_60%,transparent)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none disabled:hover:translate-y-0"
-        >
-          Submit answer
+          Start questions
         </button>
       </div>
     </div>
@@ -284,10 +426,14 @@ function QuestionStep({
 
 function FeedbackStep({
   correct,
+  explanation,
+  isFinal,
   onContinue,
   onRetry,
 }: {
   correct: boolean;
+  explanation: string;
+  isFinal: boolean;
   onContinue: () => void;
   onRetry: () => void;
 }) {
@@ -312,9 +458,7 @@ function FeedbackStep({
         </span>
       </div>
 
-      <p className="mt-6 text-[16.5px] leading-[1.7] text-foreground/85">
-        {correct ? QUESTION.explainCorrect : QUESTION.explainWrong}
-      </p>
+      <p className="mt-6 text-[16.5px] leading-[1.7] text-foreground/85">{explanation}</p>
 
       <div className="mt-10 h-px w-full bg-border" />
 
@@ -328,7 +472,7 @@ function FeedbackStep({
           </button>
         ) : (
           <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
-            Lesson complete · +40 xp
+            {isFinal ? "Lesson complete · +40 xp" : "+10 xp"}
           </span>
         )}
 
@@ -346,11 +490,11 @@ function FeedbackStep({
 
 /* ---------- Completion celebration ---------- */
 
-function CompletionScreen() {
+function CompletionScreen({ topicTitle }: { topicTitle: string }) {
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-background px-10 text-center text-foreground">
       <span className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-        Chapter I · Lesson IV · Complete
+        {topicTitle} · Complete
       </span>
 
       <div className="mt-10">
@@ -361,7 +505,7 @@ function CompletionScreen() {
         Another <em className="italic text-forest">sprig</em> has grown.
       </h1>
       <p className="mt-5 max-w-md text-[15px] leading-[1.7] text-muted-foreground">
-        How banks and money actually work — added to your journey. Small steps, real roots.
+        {topicTitle} — added to your journey. Small steps, real roots.
       </p>
 
       <div className="mt-14 flex items-center gap-8">
@@ -383,14 +527,15 @@ function CompletionScreen() {
 /* ---------- Growing sprig progress ---------- */
 
 // Top-of-screen progress indicator, small.
-function SprigProgress({ step }: { step: number }) {
-  // Clamp step 0..5 into the plant stages 0..5.
-  const stage = Math.max(0, Math.min(5, step)) as 0 | 1 | 2 | 3 | 4 | 5;
+function SprigProgress({ pointer, total }: { pointer: number; total: number }) {
+  // Map progress through the whole flat step list onto the plant's 6 stages.
+  const fraction = total > 0 ? pointer / total : 0;
+  const stage = Math.max(0, Math.min(5, Math.floor(fraction * 6))) as 0 | 1 | 2 | 3 | 4 | 5;
   return (
     <div className="flex flex-col items-center gap-1.5">
       <SprigPlant stage={stage} size="mini" />
       <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-        {stage + 1} / {TOTAL_STEPS}
+        {Math.min(pointer + 1, total)} / {total}
       </span>
     </div>
   );
