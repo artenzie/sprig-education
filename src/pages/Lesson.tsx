@@ -110,6 +110,29 @@ type ContentStep =
       totalQuestions: number;
     };
 
+// Deep-linking into one subtopic (from the Topic screen) builds a
+// self-contained step list for just that subtopic — no topic intro video,
+// no other subtopics — so the step counter reads "1 of N" for that
+// subtopic's own content rather than its position within the whole topic.
+function buildSubtopicSteps(topic: DbTopic, subtopicIndex: number): ContentStep[] {
+  const sub = topic.subtopics[subtopicIndex];
+  const steps: ContentStep[] = [];
+  sub.slides.forEach((slide, slideIndex) => {
+    steps.push({ kind: "slide", subtopicIndex, slide, slideIndex, totalSlides: sub.slides.length });
+  });
+  steps.push({ kind: "ready", subtopicIndex });
+  sub.questions.forEach((q, questionIndex) => {
+    steps.push({
+      kind: "question",
+      subtopicIndex,
+      question: mapQuestion(q),
+      questionIndex,
+      totalQuestions: sub.questions.length,
+    });
+  });
+  return steps;
+}
+
 function buildSteps(topic: DbTopic): ContentStep[] {
   const steps: ContentStep[] = [{ kind: "video" }];
   topic.subtopics.forEach((sub, subtopicIndex) => {
@@ -149,6 +172,7 @@ function toRoman(num: number): string {
 function Lesson() {
   const [searchParams] = useSearchParams();
   const topicId = searchParams.get("topic") ?? DEFAULT_TOPIC_ID;
+  const subtopicId = searchParams.get("subtopic");
   const [topic, setTopic] = useState<DbTopic | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pointer, setPointer] = useState(0);
@@ -180,8 +204,25 @@ function Lesson() {
     };
   }, [topicId]);
 
-  const steps = useMemo(() => (topic ? buildSteps(topic) : []), [topic]);
+  const targetSubtopicIndex = useMemo(
+    () => (topic && subtopicId ? topic.subtopics.findIndex((s) => s.id === subtopicId) : -1),
+    [topic, subtopicId],
+  );
+
+  const steps = useMemo(() => {
+    if (!topic) return [];
+    return targetSubtopicIndex >= 0 ? buildSubtopicSteps(topic, targetSubtopicIndex) : buildSteps(topic);
+  }, [topic, targetSubtopicIndex]);
   const totalSteps = steps.length;
+
+  // Reset to the start of the (possibly new) step list whenever which
+  // subtopic is targeted changes — covers clicking from one subtopic
+  // straight to another without the topic itself needing to refetch.
+  useEffect(() => {
+    setPointer(0);
+    setPhase("content");
+  }, [targetSubtopicIndex]);
+
   const current = steps[pointer];
   const isDone = topic !== null && pointer >= totalSteps;
 
@@ -226,17 +267,24 @@ function Lesson() {
   }
 
   if (isDone) {
-    return <CompletionScreen topicTitle={topic.title} />;
+    const scoped = targetSubtopicIndex >= 0;
+    return (
+      <CompletionScreen
+        heading={scoped ? topic.subtopics[targetSubtopicIndex].title : topic.title}
+        backTo={scoped ? `/topic/${topic.id}` : "/dashboard"}
+        backLabel={scoped ? "Back to the topic" : "Back to your journey"}
+      />
+    );
   }
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
       <header className="relative mx-auto flex max-w-[1280px] items-center justify-between px-10 pt-8">
         <Link
-          to="/dashboard"
+          to={`/topic/${topic.id}`}
           className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground hover:text-forest"
         >
-          ← Journey
+          ← Topic
         </Link>
 
         <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2">
@@ -490,11 +538,19 @@ function FeedbackStep({
 
 /* ---------- Completion celebration ---------- */
 
-function CompletionScreen({ topicTitle }: { topicTitle: string }) {
+function CompletionScreen({
+  heading,
+  backTo,
+  backLabel,
+}: {
+  heading: string;
+  backTo: string;
+  backLabel: string;
+}) {
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-background px-10 text-center text-foreground">
       <span className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-        {topicTitle} · Complete
+        {heading} · Complete
       </span>
 
       <div className="mt-10">
@@ -505,7 +561,7 @@ function CompletionScreen({ topicTitle }: { topicTitle: string }) {
         Another <em className="italic text-forest">sprig</em> has grown.
       </h1>
       <p className="mt-5 max-w-md text-[15px] leading-[1.7] text-muted-foreground">
-        {topicTitle} — added to your journey. Small steps, real roots.
+        {heading} — added to your journey. Small steps, real roots.
       </p>
 
       <div className="mt-14 flex items-center gap-8">
@@ -513,10 +569,10 @@ function CompletionScreen({ topicTitle }: { topicTitle: string }) {
           +40 xp · Streak 13
         </span>
         <Link
-          to="/dashboard"
+          to={backTo}
           className="inline-flex items-center gap-2 rounded-full bg-forest px-8 py-3.5 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--forest)_70%,transparent)] transition-transform hover:-translate-y-0.5"
         >
-          Back to your journey
+          {backLabel}
           <ChevronRight className="h-4 w-4" />
         </Link>
       </div>

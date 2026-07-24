@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Check, Lock } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 // -----------------------------------------------------------------------------
 // Hand-drawn botanical journey tree
@@ -118,6 +121,9 @@ const nodes: Node[] = [
   { id: "t4", x: TRUNK_X, y: 1875, chapter: "I.IV",  title: "How Banks and Money Actually Work",         titleLines: ["How Banks and Money", "Actually Work"], kind: "lesson", status: "current", minutes: 9, side: "left" },
   { id: "t5", x: TRUNK_X, y: 1700, chapter: "I.V",   title: "Setting a Goal That Actually Matters to You", titleLines: ["Setting a Goal That", "Actually Matters to You"], kind: "lesson", status: "locked", side: "right" },
   { id: "tm", x: TRUNK_X, y: 1560, chapter: "I",     title: "Essentials",                                kind: "milestone", status: "locked", side: "left" },
+  // t1-t5 above are Tier 1's five topics in order — matched to their real
+  // Supabase `topics.id` below by `topics.order` (1-5). Canopy nodes (Tiers
+  // 2-4) have no seeded content yet, so they stay unmapped and locked.
 
   // Left canopy — Application (sampled evenly along branch centerline)
   { id: "l1", x: 761,  y: 1483, chapter: "II.I",   title: "Budgeting Basics",                kind: "lesson", status: "locked", side: "left" },
@@ -217,9 +223,46 @@ function Leaf({ cx, cy, rot, s = 1, grown }: LeafSpec) {
   );
 }
 
+// --- Trunk node → real topic id -----------------------------------------
+
+// t1..t5 are Tier 1's five topics in order; the milestone node ("tm") has no
+// backing topic. Populated from Supabase (topics.order -> topics.id) so the
+// tree links to real content instead of nowhere.
+const TRUNK_NODE_ORDER: Record<string, number> = {
+  t1: 1,
+  t2: 2,
+  t3: 3,
+  t4: 4,
+  t5: 5,
+};
+
 // --- Main --------------------------------------------------------------------
 
 export function JourneyTree() {
+  const navigate = useNavigate();
+  const [topicIdByNode, setTopicIdByNode] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    supabase
+      .from("topics")
+      .select("id, order")
+      .eq("tier", 1)
+      .then(({ data, error }) => {
+        if (cancelled || error || !data) return;
+        const orderToId = new Map(data.map((t) => [t.order, t.id as string]));
+        const map: Record<string, string> = {};
+        for (const [nodeId, order] of Object.entries(TRUNK_NODE_ORDER)) {
+          const topicId = orderToId.get(order);
+          if (topicId) map[nodeId] = topicId;
+        }
+        setTopicIdByNode(map);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="relative mx-auto w-full" style={{ aspectRatio: `${VBW} / ${VBH}` }}>
       <svg
@@ -320,7 +363,12 @@ export function JourneyTree() {
 
       {/* Node overlay */}
       {nodes.map((n) => (
-        <LessonMark key={n.id} node={n} />
+        <LessonMark
+          key={n.id}
+          node={n}
+          topicId={topicIdByNode[n.id]}
+          onOpen={(topicId) => navigate(`/topic/${topicId}`)}
+        />
       ))}
     </div>
   );
@@ -328,7 +376,15 @@ export function JourneyTree() {
 
 // --- Node overlay -----------------------------------------------------------
 
-function LessonMark({ node }: { node: Node }) {
+function LessonMark({
+  node,
+  topicId,
+  onOpen,
+}: {
+  node: Node;
+  topicId?: string;
+  onOpen: (topicId: string) => void;
+}) {
   const isMilestone = node.kind === "milestone";
   const size = isMilestone ? 46 : 22;
   const titleLines = node.titleLines ?? [node.title];
@@ -407,10 +463,11 @@ function LessonMark({ node }: { node: Node }) {
       {/* Dot */}
       <button
         aria-label={node.title}
-        disabled={node.status === "locked"}
+        disabled={node.status === "locked" || !topicId}
+        onClick={() => topicId && onOpen(topicId)}
         className={`relative -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition-transform ${dotClass} ${
           node.status === "current" ? "scale-110" : ""
-        }`}
+        } ${topicId && node.status !== "locked" ? "cursor-pointer" : ""}`}
         style={{ width: size, height: size }}
       >
         {isMilestone ? (

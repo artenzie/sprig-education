@@ -2,6 +2,7 @@ import { Routes, Route } from 'react-router-dom'
 import Landing from '../pages/Landing'
 import Login from '../pages/Login'
 import Dashboard from '../pages/Dashboard'
+import Topic from '../pages/Topic'
 import Lesson from '../pages/Lesson'
 import Library from '../pages/Library'
 import Progress from '../pages/Progress'
@@ -14,6 +15,7 @@ function AppRoutes() {
       <Route path="/" element={<Landing />} />
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/topic/:topicId" element={<Topic />} />
       <Route path="/lesson" element={<Lesson />} />
       <Route path="/library" element={<Library />} />
       <Route path="/progress" element={<Progress />} />
