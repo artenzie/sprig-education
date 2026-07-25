@@ -1,8 +1,19 @@
 import { useState } from "react";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
+import { useAuth } from "@/context/auth";
+import { PIN_LENGTH, keepDigits } from "@/lib/studentAuth";
 
 function Login() {
+  const { status } = useAuth();
+
+  // Already signed in — no reason to show them a login form. If they still
+  // owe us a PIN change, RequireAuth on /dashboard will pick that up.
+  if (status === "authed") {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   return (
     <div className="relative min-h-screen bg-background text-foreground">
       <TopNav />
@@ -46,6 +57,39 @@ function Login() {
 }
 
 function StudentBox() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { signInWithNickname } = useAuth();
+
+  const [nickname, setNickname] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+
+    setError(null);
+    setPending(true);
+    try {
+      const result = await signInWithNickname(nickname, pin);
+      if (!result.ok) {
+        setError(result.message);
+        // Clear the PIN but keep the nickname: the nickname is almost never
+        // the part they got wrong, and retyping it is a chore.
+        setPin("");
+        return;
+      }
+
+      // If they were bounced here from somewhere specific, send them back.
+      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+      navigate(from ?? "/dashboard", { replace: true });
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div className="col-span-12 lg:col-span-6">
       <div className="flex h-full flex-col border border-border/70 bg-background/40 p-10">
@@ -65,26 +109,50 @@ function StudentBox() {
           name, no photo — ever.
         </p>
 
-        <form
-          className="mt-9 space-y-6"
-          onSubmit={(e) => e.preventDefault()}
-        >
-          <FieldLine label="Nickname" placeholder="e.g. Curious Squirrel" />
-          <FieldLine label="PIN" placeholder="4-digit code" type="password" />
+        <form className="mt-9 space-y-6" onSubmit={handleSubmit}>
+          <FieldLine
+            label="Nickname"
+            placeholder="e.g. Curious Squirrel"
+            value={nickname}
+            onChange={setNickname}
+            autoComplete="username"
+            disabled={pending}
+          />
+          <FieldLine
+            label="PIN"
+            placeholder={`${PIN_LENGTH}-digit code`}
+            type="password"
+            value={pin}
+            onChange={(value) => setPin(keepDigits(value))}
+            inputMode="numeric"
+            maxLength={PIN_LENGTH}
+            autoComplete="current-password"
+            disabled={pending}
+          />
+
+          {error && (
+            <p
+              role="alert"
+              className="text-[13px] leading-[1.6] text-[color:var(--destructive)]"
+            >
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"
-            className="group mt-2 inline-flex items-center gap-3 text-left"
+            disabled={pending}
+            className="group mt-2 inline-flex items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5 group-disabled:translate-y-0">
               <ArrowUpRight className="h-4 w-4" />
             </span>
             <span>
               <span className="block font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                Continue
+                {pending ? "Checking" : "Continue"}
               </span>
               <span className="block text-[15px] font-medium text-foreground">
-                Log in to your journey
+                {pending ? "One moment…" : "Log in to your journey"}
               </span>
             </span>
           </button>
@@ -247,14 +315,34 @@ function ToggleBtn({
   );
 }
 
+/**
+ * The underline-style input used by both boxes.
+ *
+ * `value`/`onChange` are optional so the teacher/parent form, which is still
+ * a static mock, keeps working untouched as an uncontrolled input. Pass both
+ * or neither — passing only `value` makes React complain about a controlled
+ * input with no change handler.
+ */
 function FieldLine({
   label,
   placeholder,
   type = "text",
+  value,
+  onChange,
+  inputMode,
+  maxLength,
+  autoComplete,
+  disabled,
 }: {
   label: string;
   placeholder?: string;
   type?: string;
+  value?: string;
+  onChange?: (value: string) => void;
+  inputMode?: "text" | "numeric";
+  maxLength?: number;
+  autoComplete?: string;
+  disabled?: boolean;
 }) {
   return (
     <label className="block">
@@ -264,7 +352,13 @@ function FieldLine({
       <input
         type={type}
         placeholder={placeholder}
-        className="mt-2 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-sans text-[15px] text-foreground placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none"
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        autoComplete={autoComplete}
+        disabled={disabled}
+        className="mt-2 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-sans text-[15px] text-foreground placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60"
       />
     </label>
   );

@@ -9,8 +9,18 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 - Vite + React 19 + TypeScript
 - Tailwind CSS v4
 - React Router v7
-- Supabase — auth + database, **not yet connected**
+- Supabase — auth + database, **connected**
 - Vercel — deployment target, **not yet deployed**
+
+## Authentication
+
+- Students sign in with **nickname + 6-digit PIN**, on Supabase's native email/password auth. The nickname is slugified into a synthetic address (`curious-squirrel@students.sprig.study`) that the student never sees; the PIN is the password verbatim. `src/lib/studentAuth.ts` is the single source of truth for that mapping.
+- 6 digits, not 4, because Supabase's minimum password length is 6 and it's a project-wide setting.
+- `students.id` **is** `auth.users.id`. Every RLS policy is therefore just `auth.uid() = student_id`.
+- PINs are bcrypt-hashed and unreadable — a forgotten PIN is reset by a teacher, never looked up.
+- Accounts start on PIN `000000` with `must_change_pin = true`, and `RequireAuth` blocks every route until it's changed.
+- Accounts are created by `node --env-file=.env scripts/create-students.ts <count>` (needs the service-role key, local only).
+- **Required Supabase dashboard settings**: email confirmations OFF, new-user signups OFF, and the sign-in rate limit raised well above class size (a whole class shares one school IP).
 
 ## Design system
 
@@ -29,9 +39,11 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
   - **Progress Check** — topic-based, retakeable, student picks which topics to be tested on
   - **Growth Check** — baseline-style, tracks overall improvement over time
 
-## Pages built (as of July 20, 2026 session)
+## Pages built (as of July 25, 2026 session)
 
-Landing (root), Login, Dashboard (journey tree), Lesson flow, Progress/Tests, Certificate, Library, FAQ — all static UI, ported from a Lovable-designed prototype. No backend functionality yet.
+Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ.
+
+Working against the database: login/logout, the first-time PIN change, route guards, and the curriculum reads on Topic and Lesson. Still mock data: the dashboard's percentages and streaks, the journey tree's complete/current/locked states, Progress, Certificate and Library. Persisting real progress and test attempts is the next piece of work — the RLS policies for it are now in place.
 
 ## Workflow preference
 

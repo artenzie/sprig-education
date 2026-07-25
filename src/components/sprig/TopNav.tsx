@@ -1,4 +1,4 @@
-import { Link, NavLink } from "react-router-dom";
+import { Link, NavLink, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import {
   Compass,
@@ -7,19 +7,22 @@ import {
   Award,
   Bell,
   HelpCircle,
-  Eye,
-  EyeOff,
+  KeyRound,
   LogOut,
   Sparkles,
   CalendarClock,
   CircleDot,
 } from "lucide-react";
+import { useAuth } from "@/context/auth";
+import type { Student } from "@/context/auth";
+import { nicknameInitials } from "@/lib/studentAuth";
 
 export function TopNav() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const { status, student } = useAuth();
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
@@ -80,19 +83,34 @@ export function TopNav() {
             </button>
             {notifOpen && <NotificationsPanel />}
           </div>
+          {/* TopNav also renders on public pages, so there may be nobody
+              signed in — in which case the avatar becomes a way in. */}
           <div className="relative ml-2" ref={profileRef}>
-            <button
-              aria-label="Profile"
-              aria-expanded={profileOpen}
-              onClick={() => {
-                setProfileOpen((v) => !v);
-                setNotifOpen(false);
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-forest/10 text-[13px] font-semibold text-forest transition-colors hover:bg-forest/15"
-            >
-              AK
-            </button>
-            {profileOpen && <ProfilePanel />}
+            {status === "authed" && student ? (
+              <>
+                <button
+                  aria-label="Profile"
+                  aria-expanded={profileOpen}
+                  onClick={() => {
+                    setProfileOpen((v) => !v);
+                    setNotifOpen(false);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-forest/10 text-[13px] font-semibold text-forest transition-colors hover:bg-forest/15"
+                >
+                  {nicknameInitials(student.nickname)}
+                </button>
+                {profileOpen && (
+                  <ProfilePanel student={student} onClose={() => setProfileOpen(false)} />
+                )}
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="rounded-full border border-border/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest hover:text-foreground"
+              >
+                Log in
+              </Link>
+            )}
           </div>
         </div>
       </div>
@@ -152,49 +170,56 @@ function NotificationsPanel() {
   );
 }
 
-function ProfilePanel() {
-  const [revealed, setRevealed] = useState(false);
-  const pin = "4728";
+function ProfilePanel({ student, onClose }: { student: Student; onClose: () => void }) {
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  // This panel used to show the PIN behind a reveal toggle. It can't any more,
+  // and that's the intended outcome rather than a regression: PINs are now
+  // bcrypt-hashed by Supabase, so there is nothing to reveal — not to the
+  // student, not to us, not to anyone who gets hold of the database. The cost
+  // is that a forgotten PIN has to be reset by a teacher instead of looked up.
   return (
     <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[280px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
       <div className="relative m-3 h-28 overflow-hidden rounded-lg border border-border/60 bg-secondary/60">
         {/* placeholder avatar backdrop */}
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-forest/15 font-display text-[22px] text-forest">
-            AK
+            {nicknameInitials(student.nickname)}
           </div>
         </div>
         <button className="absolute bottom-2 right-2 rounded-full border border-border/70 bg-background/90 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground">
           Customize
         </button>
       </div>
-      <div className="px-4 pb-3">
+      <div className="px-4 pb-4">
         <div className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
           Reader
         </div>
         <div className="mt-1 font-display text-[17px] leading-tight text-foreground">
-          Curious Squirrel
-        </div>
-        <div className="mt-4 flex items-center justify-between">
-          <div>
-            <div className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
-              PIN
-            </div>
-            <div className="mt-0.5 font-mono text-[15px] tracking-[0.3em] text-foreground">
-              {revealed ? pin : "••••"}
-            </div>
-          </div>
-          <button
-            onClick={() => setRevealed((v) => !v)}
-            aria-label={revealed ? "Hide PIN" : "Show PIN"}
-            className="flex h-8 w-8 items-center justify-center rounded-full border border-border/60 text-muted-foreground transition-colors hover:text-foreground"
-          >
-            {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-          </button>
+          {student.nickname}
         </div>
       </div>
       <div className="border-t border-border/60">
-        <button className="flex w-full items-center gap-2 px-4 py-3 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
+        <button
+          onClick={() => {
+            onClose();
+            navigate("/set-pin");
+          }}
+          className="flex w-full items-center gap-2 px-4 py-3 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+        >
+          <KeyRound className="h-3.5 w-3.5" />
+          Change PIN
+        </button>
+      </div>
+      <div className="border-t border-border/60">
+        <button
+          onClick={() => {
+            onClose();
+            void signOut().then(() => navigate("/"));
+          }}
+          className="flex w-full items-center gap-2 px-4 py-3 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+        >
           <LogOut className="h-3.5 w-3.5" />
           Log out
         </button>

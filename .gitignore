@@ -17,6 +17,9 @@ dist-ssr
 .env.*
 !.env.example
 
+# Nickname/PIN hand-out lists written by scripts/create-students.ts
+students-*.csv
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

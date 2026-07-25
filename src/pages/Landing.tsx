@@ -277,13 +277,15 @@ function Landing() {
               <ArrowUpRight className="ml-2 h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-forest" />
             </a>
 
+            {/* Was pointing at /dashboard, which now bounces anyone not signed
+                in straight to the login page. Say so honestly instead. */}
             <div className="mt-16">
               <Link
-                to="/dashboard"
+                to="/login"
                 className="inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground hover:text-forest"
               >
                 <span className="h-px w-8 bg-current" />
-                See the journey
+                Log in to your journey
               </Link>
             </div>
           </div>
