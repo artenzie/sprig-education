@@ -536,3 +536,178 @@ The check worth copying: a second student was signed in and saw `0 / 20`. The pr
 Lesson progress is real. What is still fabricated, or simply missing, is everything to do with *assessment*: Progress Checks, Growth Checks, `test_attempts`, and the per-question answer history that both the growth chart and the missed-question cards need. Streak and XP were removed rather than faked in this pass — `daily_checkins` has no writer, and XP has no rule defining what a subtopic is worth.
 
 That is the next piece of work, and it now has a clear shape: a test flow that writes `test_attempts`, and a decision about whether individual answers are stored alongside it. The UI for the results is already built and waiting.
+
+---
+---
+
+# Second session — the baseline and Growth Check flow
+
+The previous section ended by naming the next piece of work: "a test flow that writes `test_attempts`, and a decision about whether individual answers are stored alongside it." This session built exactly that.
+
+The headline: **no migration was needed.** `test_attempts` has existed since the initial schema, and its grants and RLS policies went in with everything else on 25 July. The table was never the missing piece — the writer was. Worth noticing as a pattern: a good schema written early keeps paying out later, and "add the feature" turned out to mean "add the UI and the logic", not "change the database".
+
+---
+
+## 1. Choosing the questions: why not `ORDER BY random()`
+
+The obvious way to pick 18 random questions is to ask Postgres:
+
+```sql
+select * from questions order by random() limit 18;
+```
+
+We didn't, for two independent reasons.
+
+**The practical one.** PostgREST — the layer the Supabase JS client talks to — has no way to express `order by random()`. Getting it would mean writing a Postgres function and therefore a migration. At 84 questions, the entire bank is one small query, roughly the size of a single lesson's payload that the app already fetches without anyone noticing. Paying a migration to avoid fetching 84 rows is paying for nothing.
+
+**The one that actually matters.** `random()` is the wrong algorithm here even if it were free.
+
+The bank is not evenly spread: Topic I.I has 16 questions, I.III has 20, others fewer. Deal 18 uniformly at random from that and you regularly get six questions from one topic and **none** from another. Run it a hundred times and a topic gets skipped entirely more often than feels acceptable.
+
+A test that announces "a mix from across everything you've covered" and then silently omits a fifth of the course is worse than one that admits a narrower scope, because the student has no way to know. So selection is **stratified**:
+
+1. Group the questions by topic.
+2. Shuffle within each group.
+3. Deal round-robin across the topics — one each, round and round — until you reach 18.
+4. Shuffle the final 18 so it isn't experienced as five blocks.
+
+The result is 3–4 questions from every topic, every time. And tier coverage comes free: every topic belongs to exactly one tier, so spreading evenly across topics spreads across tiers too. When Tiers 2–4 get seeded, `testSelection.ts` needs no changes at all.
+
+### A small, real trap: don't shuffle with `sort()`
+
+The one-line shuffle everyone reaches for is:
+
+```ts
+items.sort(() => Math.random() - 0.5)   // <- don't
+```
+
+It looks clever and it is genuinely biased. Comparison sorts assume a **consistent** comparator — that if `a < b` and `b < c`, then `a < c`. A random comparator breaks that promise, so the sort's internal decisions stop being valid and the output distribution comes out measurably lopsided, in a way that depends on which sort algorithm your engine happens to use.
+
+Fisher–Yates is the same number of lines and is actually uniform:
+
+```ts
+for (let i = out.length - 1; i > 0; i--) {
+  const j = Math.floor(rand() * (i + 1));
+  [out[i], out[j]] = [out[j], out[i]];
+}
+```
+
+Walk backwards; for each position, swap it with a random earlier-or-equal position. Every permutation ends up equally likely.
+
+Note `rand` is a parameter with a default of `Math.random`. That is what makes randomness testable: pass a fake generator and the shuffle becomes deterministic. **Injecting the source of randomness is usually cheaper than the alternative, which is deciding your random code can't be tested.**
+
+### How it was checked
+
+`testSelection.ts` imports nothing — no React, no Supabase, exactly like `journey.ts`. That's not tidiness for its own sake; it means the file can be run directly by Node, which is what happened: 500 selections from a pool shaped like the real bank, asserting every run returns 18 distinct questions and every topic lands 3–4. Also checked: a bank smaller than 18 (returns a shorter test rather than throwing), an empty pool, and a lopsided bank where one topic has only 2 questions (the other topics absorb the shortfall and you still get 18).
+
+**A file with no imports is a file you can test without a test framework.** That is worth designing for.
+
+---
+
+## 2. "I'm not sure yet" — and why the scoring is the interesting part
+
+Every test question offers a third option beside answering: *I'm not sure yet*.
+
+### The problem it solves
+
+On a four-option multiple choice, **guessing pays 25% for free.** A student who knows nothing and guesses all 18 scores about 4.5 correct. That's not a small distortion in a diagnostic — it means the baseline is partly measuring how willing a student is to guess, which is a personality trait, not knowledge.
+
+Offering a skip only fixes this if choosing it is never *worse* for the student than a lucky guess would have been. If skipping is punished, everyone guesses, and you've added a button nobody presses. So an unsure is never shown in red, never called wrong, and never appears as a mistake. On the results screen it's labelled *"Not met yet"* rather than *"Not quite"* — a different thing, honestly reported.
+
+This is also why the flow has an intro screen. It isn't decoration. The incentive only works if the student knows **before starting** that skipping is allowed and guessing isn't wanted — otherwise they do what twelve years of schooling has trained them to do.
+
+### The trap on the other side
+
+Here's where it got genuinely interesting. The natural instinct is "if an unsure is neither correct nor incorrect, leave it out of the score entirely":
+
+```
+score = correct / (correct + incorrect)
+```
+
+That is wrong, and the reason is worth internalising. A student who answers 2 questions and skips 16 gets **100%**. That number then lands on the growth chart, one dot along from a real 100%, and the chart's entire job — comparing an attempt to an earlier attempt — silently breaks. A denominator that moves with the student's confidence isn't a denominator.
+
+So `score = correct / total_shown`. Unsures sit in the denominator.
+
+### Why that costs nothing
+
+Because the three-way outcome is stored **per question** in the `answers` jsonb. "Correct out of attempted" is one `.filter()` away, forever, for anyone who wants it.
+
+This is the same argument `journey.ts` makes about storing only completions, and it's the load-bearing idea in both files:
+
+> **Store the facts. Derive the opinions.**
+
+The three outcomes are facts about what happened. The score is one opinion about those facts — a useful one, but not the only possible one, and not one worth destroying the underlying data to compute. The counts of correct/incorrect/unsure are deliberately *not* stored as columns either: a stored count that disagrees with the answers it summarises is a bug that cannot happen if it was never stored.
+
+---
+
+## 3. The write itself
+
+One `insert`, once, when the last question is answered.
+
+```ts
+{
+  student_id, test_type,       // 'baseline' | 'growth_check'
+  score,                       // correct / total_shown, one decimal
+  questions_shown: [{ question_id, topic_id, subtopic_id }],
+  answers:         [{ question_id, outcome, response }]
+}
+```
+
+Two parallel arrays in the order the student saw them. `response` holds what they actually entered — an option index, a list of indices, a number, a string, or `null` for an unsure — which is what will later let a missed-question card show a student *what they picked*, not merely that they were wrong.
+
+**Nothing is written for an abandoned test.** No draft row, no partial save. That's deliberate: a half-finished attempt stored with a score would show up on the growth chart as a bad week, which is a lie about a test that was never taken. The honest record of "started and walked away" is no record. The cost, stated plainly: a student who refreshes mid-test starts over.
+
+### Two things that would have been bugs
+
+**The save is in the click handler, not an effect.** The tempting shape is `useEffect(() => { if (answers.length === total) save(); }, [answers])`. Under React 19 StrictMode, development double-mounts components and effects fire twice — which would write **two attempt rows for one test**. An event handler runs exactly once per click. When something must happen precisely once, an effect is the wrong tool; effects are for synchronising with external state, not for performing actions.
+
+**`QuestionCard` needs a changing `key`.** It keeps the current selection in local `useState`. React reuses a component instance when it appears in the same position with the same key — so without `key={current.id}`, moving to question 4 would keep question 3's selection highlighted. `key` isn't only for lists; it is the general instruction *"this is a different thing now, start it fresh."*
+
+---
+
+## 4. The bug that was hiding in the parked chart
+
+`GrowthChart` was written weeks ago against a seven-point mock array and worked perfectly. It computed x positions like this:
+
+```ts
+padL + (i / (points.length - 1)) * innerW
+```
+
+With one point, `points.length - 1` is `0`. In JavaScript `0 / 0` is `NaN`, `NaN` propagates through every subsequent calculation, and SVG silently refuses to draw an element with `NaN` coordinates. Not a crash — a blank chart and no error message.
+
+The part worth sitting with: **that line was never reachable while the data was fake, and is now the first thing every single student will hit.** The moment after finishing a baseline, a student has exactly one attempt. A bug at n=1 in code that only ever saw n=7 was guaranteed to ship the day the feature became real.
+
+The general lesson is about mock data. Seven invented points didn't just fail to catch this — they actively hid it, because they made the component look finished. **Mock data tests your code against the case you imagined, which is exactly the case you already handled.** The edges worth checking are zero, one, and enormous.
+
+Fixed by centring a single point and skipping the line path (a line from a point to itself isn't a thing). `GrowthChart` also moved out of `growth-check-parked.tsx` into its own file, because a file named *parked* that exports a live component is a lie to the next person reading the repo.
+
+---
+
+## 5. Removing a duplication before it could bite
+
+`mapQuestion` — the function that decodes a `questions` row into something gradeable — lived inside `Lesson.tsx`. The test flow needed exactly the same translation.
+
+Copying it would have been the fast move and a genuine trap, because the encoding it decodes is fiddly. `correct_answer` is a `text` column for every question type, so an mcq stores `"1"` (an option index), a multi stores `"[0,1,2]"` (JSON that needs parsing), a num stores `"20"`, and a text question stores the canonical answer with alternatives in `accepted_answers`.
+
+The day someone adds a question type or changes that encoding, they will update the copy they're looking at. The other one starts marking correct answers wrong — and it fails *quietly*, as a student insisting they got it right. Grading logic gets exactly one home: `src/lib/questions.ts`.
+
+---
+
+## 6. What's real now, and what isn't
+
+**Real:** the baseline and Growth Check flow end to end, the `test_attempts` write, the growth chart on the Progress page, and a results screen with an end-of-test review of everything missed — which works without an extra query because the flow still holds those questions in memory.
+
+The Progress page's button now picks its own type: zero attempts means "Take your baseline", otherwise "Take Growth Check". That's what finally gives the `baseline` value in the `test_type` check constraint a writer, three sessions after it was defined.
+
+**Still honestly empty:** the *historical* missed-questions section. Its UI stays parked, and the reason is a missing query rather than missing design — rebuilding a missed question weeks later means pulling ids out of `test_attempts.answers` and joining them back to `questions` for the text, answer and explanation.
+
+**Progress Checks are not built.** The topic-picker UI on the Progress page is still inert. The route is `/test?type=...` precisely so a progress check reuses the same page with a topic filter added to the pool query, rather than becoming a second near-identical flow.
+
+### What was verified, and what wasn't
+
+Session time ran short, so this is stated exactly:
+
+- **Verified:** `tsc -b` and `vite build` clean; `oxlint` clean with warnings denied; the selection logic exercised directly over 500 runs, including short banks, empty pools and lopsided topic sizes.
+- **Not verified:** a real run through the browser, and a written row inspected in `test_attempts`.
+
+That second list is the first job next session — and specifically worth checking the same way the RLS reliance was checked last time: take a test as one student, then sign in as another and confirm the growth chart is empty. `fetchTestAttempts()` carries **no `student_id` filter**, relying entirely on the RLS policy, and watching a second student see nothing is what turns that reliance from a claim into a demonstrated fact.
