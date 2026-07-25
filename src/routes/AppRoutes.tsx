@@ -8,6 +8,7 @@ import Topic from '../pages/Topic'
 import Lesson from '../pages/Lesson'
 import Library from '../pages/Library'
 import Progress from '../pages/Progress'
+import TestFlow from '../pages/TestFlow'
 import Certificate from '../pages/Certificate'
 import Help from '../pages/Help'
 
@@ -34,6 +35,10 @@ function AppRoutes() {
         <Route path="/lesson" element={<Lesson />} />
         <Route path="/library" element={<Library />} />
         <Route path="/progress" element={<Progress />} />
+        {/* One route for every test type, distinguished by ?type= — the flow
+            differs only in which questions fill the pool, so progress checks
+            will reuse this with an added topic filter rather than a new page. */}
+        <Route path="/test" element={<TestFlow />} />
         <Route path="/certificate" element={<Certificate />} />
       </Route>
 

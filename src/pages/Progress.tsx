@@ -1,8 +1,11 @@
 import { Link } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
+import { GrowthChart, type GrowthPoint } from "@/components/sprig/GrowthChart";
 import { useJourney } from "@/hooks/useJourney";
+import { useAuth } from "@/context/auth";
+import { fetchTestAttempts, type TestAttemptRow } from "@/lib/testAttempts";
 import type { JourneyTopic } from "@/lib/journey";
 
 /**
@@ -13,29 +16,89 @@ import type { JourneyTopic } from "@/lib/journey";
  * written explanations. All of it was fabricated, and none of it can be
  * recovered from what the app actually stores.
  *
- * The reason is worth understanding, because it is a modelling limit rather
- * than a missing query. `progress` records THAT a subtopic was finished --
- * one row, no score. It has no idea how many questions were answered
- * correctly, which ones were missed, or when a test was taken. Those belong to
- * `test_attempts`, and nothing writes to that table because the Progress Check
- * and Growth Check flows do not exist yet.
+ * Two of those three are now real. `progress` records THAT a subtopic was
+ * finished -- one row, no score -- which is what the topic bars plot. Scores
+ * belong to `test_attempts`, and the baseline / Growth Check flow at
+ * src/pages/TestFlow.tsx finally writes to it, so the growth chart is live.
  *
- * So this page now shows real completion, and says plainly that the rest
- * hasn't happened yet. The temptation was to relabel completion as "mastery"
- * and keep the bars looking full -- that would have made the page look
- * finished while showing a number that does not mean what it says.
+ * The temptation throughout was to relabel completion as "mastery" and keep
+ * the bars looking full. That would have made the page look finished while
+ * showing a number that does not mean what it says.
  *
- * The UI for the missing half is not gone. The Growth Check line chart and the
- * missed-question cards are parked, intact, in
- * src/components/sprig/growth-check-parked.tsx -- import them back here once
- * test_attempts has rows to feed them.
+ * STILL HONEST-EMPTY: the missed-questions section. Its UI is parked in
+ * growth-check-parked.tsx, and the reason it is still parked is not design but
+ * a missing query -- rebuilding a missed question weeks later means taking the
+ * ids out of `test_attempts.answers` and joining them back to `questions`.
+ * (The end-of-test results screen already shows missed questions, because at
+ * that moment it still has them in memory.)
  */
 
 /* ---------- Page ---------- */
 
+/**
+ * Turn stored attempts into chart points.
+ *
+ * Only baselines and Growth Checks are plotted. Progress Checks are
+ * deliberately excluded: they cover a handful of self-chosen topics, so their
+ * score is not comparable with a test that samples the whole curriculum, and
+ * putting both on one line would make an easy Progress Check look like growth.
+ *
+ * The `week` label doubles as the React key, so it is derived from the index
+ * rather than the test type -- two baselines would otherwise collide.
+ */
+function toGrowthPoints(attempts: TestAttemptRow[]): GrowthPoint[] {
+  return attempts
+    .filter((a) => a.test_type === "baseline" || a.test_type === "growth_check")
+    .map((attempt, i) => ({
+      week: i === 0 && attempt.test_type === "baseline" ? "Baseline" : `Check ${i}`,
+      date: new Date(attempt.date).toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+      }),
+      score: attempt.score,
+    }));
+}
+
 function ProgressPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const { journey, loading } = useJourney();
+  const { student } = useAuth();
+
+  // null means "not loaded yet" -- distinct from [], which means "loaded, and
+  // this student has genuinely never taken a test". The button label depends
+  // on which of those it is, so they cannot share a value.
+  const [attempts, setAttempts] = useState<TestAttemptRow[] | null>(null);
+  const [attemptsError, setAttemptsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!student) return;
+
+    void fetchTestAttempts().then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setAttempts(result.attempts);
+      } else {
+        // Shown, not swallowed. A failed read that falls through to "no Growth
+        // Checks yet" would tell a student who has taken three that they have
+        // taken none -- the exact class of quiet lie the rest of this page was
+        // rewritten to avoid.
+        setAttemptsError(result.message);
+        setAttempts([]);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [student]);
+
+  const growthPoints = attempts ? toGrowthPoints(attempts) : [];
+  const attemptsLoaded = attempts !== null;
+  // The first test anyone ever takes is their baseline. After that they are
+  // Growth Checks -- which is what finally gives the `baseline` value in the
+  // test_type check constraint a writer.
+  const isFirstTest = attemptsLoaded && attempts.length === 0;
 
   // Only topics with content the student has actually started or finished --
   // there is nothing to revisit in a topic they have never opened.
@@ -82,21 +145,35 @@ function ProgressPage() {
                 since your very first baseline.
               </p>
             </div>
-            <button
-              disabled
-              title="Growth Checks aren't built yet"
-              className="inline-flex shrink-0 items-center gap-2 rounded-full bg-muted px-6 py-3 text-[13.5px] font-medium text-muted-foreground"
-            >
-              Take Growth Check
-              <ArrowUpRight className="h-4 w-4" />
-            </button>
+            {attemptsLoaded ? (
+              <Link
+                to={`/test?type=${isFirstTest ? "baseline" : "growth_check"}`}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full bg-forest px-6 py-3 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--forest)_70%,transparent)] transition-transform hover:-translate-y-0.5"
+              >
+                {isFirstTest ? "Take your baseline" : "Take Growth Check"}
+                <ArrowUpRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <span className="inline-flex shrink-0 items-center gap-2 rounded-full bg-muted px-6 py-3 text-[13.5px] font-medium text-muted-foreground">
+                Loading…
+              </span>
+            )}
           </div>
 
           <div className="mt-10">
-            <EmptyPanel
-              title="No Growth Checks yet"
-              body="Once you've taken your first Growth Check, this is where you'll watch your score move over the term."
-            />
+            {attemptsError ? (
+              <EmptyPanel
+                title="Couldn't load your results"
+                body={`Your Growth Checks are safe — we just couldn't fetch them just now. ${attemptsError}`}
+              />
+            ) : growthPoints.length > 0 ? (
+              <GrowthChart points={growthPoints} />
+            ) : (
+              <EmptyPanel
+                title={attemptsLoaded ? "No Growth Checks yet" : "Loading…"}
+                body="Start with a baseline — a short mix of questions from across the whole course. It's meant to be hard, and it's what everything after gets measured against."
+              />
+            )}
           </div>
         </section>
 

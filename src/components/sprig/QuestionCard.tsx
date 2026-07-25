@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { AnswerOutcome, QuestionResponse } from "@/lib/testAttempts";
 
 type BaseQuestion = {
   prompt: string;
@@ -31,17 +32,43 @@ export type TextQuestion = BaseQuestion & {
 
 export type Question = McqQuestion | MultiQuestion | NumQuestion | TextQuestion;
 
+/**
+ * What one answered question hands back.
+ *
+ * This used to be a bare `correct: boolean`, which was enough while the only
+ * caller was the lesson flow. Tests need a third outcome -- "I'm not sure yet"
+ * is neither right nor wrong -- and they need to know what the student actually
+ * entered, so the missed-question cards can show it back to them later.
+ *
+ * `response` is null for an unsure: they entered nothing, and storing a
+ * half-filled selection would misrepresent them as having tried an answer.
+ */
+export type AnswerResult = {
+  outcome: AnswerOutcome;
+  response: QuestionResponse;
+};
+
 const inputClasses =
   "w-full rounded-xl border border-border bg-transparent px-5 py-4 text-[15px] leading-[1.55] text-foreground/90 outline-none transition-colors focus:border-forest placeholder:text-muted-foreground/60";
 
 export function QuestionCard({
   question,
   kicker = "Check-in · Question 1 of 1",
+  allowUnsure = false,
+  submitLabel = "Submit answer",
   onSubmit,
 }: {
   question: Question;
   kicker?: string;
-  onSubmit: (correct: boolean) => void;
+  /**
+   * Offers "I'm not sure yet". Off by default, so the lesson flow is
+   * unchanged: mid-lesson there is an explanation waiting on the next screen
+   * and a retry available, so skipping would only skip the teaching. In a
+   * test there is neither, and the honest answer is worth having.
+   */
+  allowUnsure?: boolean;
+  submitLabel?: string;
+  onSubmit: (result: AnswerResult) => void;
 }) {
   const [selected, setSelected] = useState<number | null>(null);
   const [selectedMulti, setSelectedMulti] = useState<Set<number>>(new Set());
@@ -57,9 +84,14 @@ export function QuestionCard({
           ? numValue.trim() !== ""
           : textValue.trim() !== "";
 
+  const verdict = (correct: boolean, response: QuestionResponse): AnswerResult => ({
+    outcome: correct ? "correct" : "incorrect",
+    response,
+  });
+
   function handleSubmit() {
     if (question.question_type === "mcq") {
-      onSubmit(selected === question.correctIndex);
+      onSubmit(verdict(selected === question.correctIndex, selected));
       return;
     }
     if (question.question_type === "multi") {
@@ -67,7 +99,7 @@ export function QuestionCard({
       const answer = [...question.correctIndices].sort((a, b) => a - b);
       const correct =
         picked.length === answer.length && picked.every((v, i) => v === answer[i]);
-      onSubmit(correct);
+      onSubmit(verdict(correct, picked));
       return;
     }
     if (question.question_type === "num") {
@@ -77,14 +109,14 @@ export function QuestionCard({
         (question.tolerance != null
           ? Math.abs(entered - question.correctValue) <= question.tolerance
           : entered === question.correctValue);
-      onSubmit(correct);
+      onSubmit(verdict(correct, numValue.trim()));
       return;
     }
     const normalized = textValue.trim().toLowerCase();
     const correct = question.acceptedAnswers.some(
       (a) => a.trim().toLowerCase() === normalized,
     );
-    onSubmit(correct);
+    onSubmit(verdict(correct, textValue.trim()));
   }
 
   return (
@@ -139,13 +171,27 @@ export function QuestionCard({
         )}
       </div>
 
-      <div className="mt-10 flex justify-end">
+      <div className="mt-10 flex items-center justify-between gap-6">
+        {/* Deliberately a quiet text button rather than a second filled one.
+            It should be genuinely easy to choose -- never disabled, no
+            selection required -- without competing with answering. */}
+        {allowUnsure ? (
+          <button
+            onClick={() => onSubmit({ outcome: "unsure", response: null })}
+            className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground underline-offset-4 transition-colors hover:text-forest hover:underline"
+          >
+            I'm not sure yet
+          </button>
+        ) : (
+          <span />
+        )}
+
         <button
           disabled={!canSubmit}
           onClick={handleSubmit}
           className="rounded-full bg-terracotta px-7 py-3 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--terracotta)_60%,transparent)] transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:shadow-none disabled:hover:translate-y-0"
         >
-          Submit answer
+          {submitLabel}
         </button>
       </div>
     </div>

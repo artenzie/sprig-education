@@ -2,6 +2,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Play, Check, Leaf } from "lucide-react";
 import { QuestionCard, type Question } from "../components/sprig/QuestionCard";
+import { mapQuestion, type DbQuestion as DbQuestionColumns } from "../lib/questions";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/auth";
 import { markSubtopicComplete } from "../hooks/useJourney";
@@ -19,17 +20,10 @@ type DbSlide = {
   body: string;
 };
 
-type DbQuestion = {
-  id: string;
-  order: number | null;
-  question_type: "mcq" | "multi" | "num" | "text";
-  question_text: string;
-  options: string[];
-  correct_answer: string;
-  accepted_answers: string[] | null;
-  tolerance: number | null;
-  explanation: string | null;
-};
+// The shared column set plus `order`, which only the lesson needs -- a lesson
+// walks a subtopic's questions in the sequence they were written, where a test
+// deliberately shuffles them.
+type DbQuestion = DbQuestionColumns & { order: number | null };
 
 type DbSubtopic = {
   id: string;
@@ -47,43 +41,6 @@ type DbTopic = {
   video_url: string | null;
   subtopics: DbSubtopic[];
 };
-
-function mapQuestion(q: DbQuestion): Question {
-  const explanation = q.explanation ?? "";
-  if (q.question_type === "mcq") {
-    return {
-      question_type: "mcq",
-      prompt: q.question_text,
-      options: q.options,
-      correctIndex: parseInt(q.correct_answer, 10),
-      explanation,
-    };
-  }
-  if (q.question_type === "multi") {
-    return {
-      question_type: "multi",
-      prompt: q.question_text,
-      options: q.options,
-      correctIndices: JSON.parse(q.correct_answer),
-      explanation,
-    };
-  }
-  if (q.question_type === "num") {
-    return {
-      question_type: "num",
-      prompt: q.question_text,
-      correctValue: parseFloat(q.correct_answer),
-      tolerance: q.tolerance,
-      explanation,
-    };
-  }
-  return {
-    question_type: "text",
-    prompt: q.question_text,
-    acceptedAnswers: q.accepted_answers ?? [q.correct_answer],
-    explanation,
-  };
-}
 
 function normalizeTopic(raw: DbTopic): DbTopic {
   const subtopics = [...raw.subtopics]
@@ -382,8 +339,13 @@ function Lesson() {
               kicker={`Subtopic ${current.subtopicIndex + 1} of ${topic.subtopics.length} · Question ${
                 current.questionIndex + 1
               } of ${current.totalQuestions}`}
-              onSubmit={(isCorrect) => {
-                setCorrect(isCorrect);
+              // QuestionCard now reports a three-way outcome so tests can
+              // offer "I'm not sure yet". The lesson doesn't enable that
+              // option (allowUnsure defaults to false), so only correct and
+              // incorrect can reach here -- the lesson's two-state feedback
+              // screen is unchanged.
+              onSubmit={(result) => {
+                setCorrect(result.outcome === "correct");
                 setPhase("feedback");
               }}
             />
