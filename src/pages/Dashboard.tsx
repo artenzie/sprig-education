@@ -1,12 +1,25 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 
 import { CheckInModal } from "@/components/sprig/CheckInModal";
 import { JourneyTree } from "@/components/sprig/JourneyTree";
+import { useJourney } from "@/hooks/useJourney";
+import { TIER_NAME, toRoman } from "@/lib/journey";
 
 function Dashboard() {
   const [checkInOpen, setCheckInOpen] = useState(false);
+  const navigate = useNavigate();
+  const { journey, loading } = useJourney();
+
+  const { percentComplete, currentTopic, nextUp } = journey;
+
+  // "Chapter" is the current topic's position within its own tier, so a
+  // student on the fourth of Tier 1's five topics reads "IV of V".
+  const topicsInTier = currentTopic
+    ? journey.topics.filter((t) => t.tier === currentTopic.tier).length
+    : 0;
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
@@ -20,12 +33,12 @@ function Dashboard() {
             </span>
             <div className="relative h-[3px] flex-1 overflow-hidden rounded-full bg-forest/10">
               <div
-                className="absolute inset-y-0 left-0 rounded-full bg-forest"
-                style={{ width: "13%" }}
+                className="absolute inset-y-0 left-0 rounded-full bg-forest transition-[width] duration-700 ease-out"
+                style={{ width: `${percentComplete}%` }}
               />
             </div>
             <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-              13%
+              {loading ? "—" : `${percentComplete}%`}
             </span>
           </div>
           <button
@@ -64,32 +77,49 @@ function Dashboard() {
 
             <div className="mt-10 h-px w-full bg-border" />
 
-            {/* Editorial stats */}
+            {/* Editorial stats.
+                Streak and Experience used to sit here on hardcoded values (12
+                days, 2,480 xp). Both are gone rather than faked: a streak needs
+                daily_checkins, which nothing writes to yet, and XP has no rule
+                defining what a subtopic is worth. They come back when there is
+                something real behind them. */}
             <dl className="mt-8 grid grid-cols-2 gap-y-7">
-              <MetaStat label="Tier" value="Essentials" />
-              <MetaStat label="Chapter" value="I of IV" />
-              <MetaStat label="Streak" value="12" suffix="days" />
-              <MetaStat label="Experience" value="2,480 / 12,000" suffix="xp" />
-              <MetaStat label="Next" value="Banks" accent />
+              <MetaStat label="Tier" value={currentTopic ? TIER_NAME[currentTopic.tier] ?? "Sprig" : "—"} />
+              <MetaStat
+                label="Chapter"
+                value={currentTopic ? `${toRoman(currentTopic.order)} of ${toRoman(topicsInTier)}` : "—"}
+              />
+              <MetaStat
+                label="Lessons"
+                value={loading ? "—" : `${journey.completedSubtopics} / ${journey.totalSubtopics}`}
+                suffix={loading ? undefined : "done"}
+              />
+              <MetaStat label="Next" value={nextUp ? nextUp.subtopic.title : "—"} accent />
             </dl>
 
 
             <div className="mt-10 h-px w-full bg-border" />
 
-            <button className="group mt-8 inline-flex items-center gap-3 text-left">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5">
-                <ArrowUpRight className="h-4 w-4" />
-              </span>
-              <span>
-                <span className="block font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                  Continue reading
+            {nextUp && (
+              <button
+                onClick={() =>
+                  navigate(`/lesson?topic=${nextUp.topic.id}&subtopic=${nextUp.subtopic.id}`)
+                }
+                className="group mt-8 inline-flex items-center gap-3 text-left"
+              >
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5">
+                  <ArrowUpRight className="h-4 w-4" />
                 </span>
-                <span className="block text-[15px] font-medium text-foreground">
-                  I.IV &nbsp;How banks actually work
+                <span>
+                  <span className="block font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
+                    Continue reading
+                  </span>
+                  <span className="block text-[15px] font-medium text-foreground">
+                    {toRoman(nextUp.topic.tier)}.{toRoman(nextUp.topic.order)} &nbsp;{nextUp.subtopic.title}
+                  </span>
                 </span>
-
-              </span>
-            </button>
+              </button>
+            )}
 
             <p className="mt-10 max-w-xs font-mono text-[10.5px] uppercase leading-[1.9] tracking-[0.22em] text-muted-foreground/80">
               Read bottom &nbsp;→&nbsp; top
@@ -101,7 +131,7 @@ function Dashboard() {
 
         {/* Right column: reserved for future journey visualization */}
         <section className="col-span-12 lg:col-span-8">
-          <JourneyTree />
+          <JourneyTree journey={journey} />
         </section>
       </main>
 

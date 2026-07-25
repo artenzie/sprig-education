@@ -1,8 +1,10 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Play, Check, Leaf } from "lucide-react";
 import { QuestionCard, type Question } from "../components/sprig/QuestionCard";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/auth";
+import { markSubtopicComplete } from "../hooks/useJourney";
 
 // Topic I.I — The Psychology of Spending. Default until the dashboard links
 // into a specific topic; override with ?topic=<id> for testing other topics.
@@ -179,6 +181,8 @@ function Lesson() {
   const [phase, setPhase] = useState<"content" | "feedback">("content");
   const [correct, setCorrect] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const { student } = useAuth();
+  const [saveFailed, setSaveFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,6 +229,38 @@ function Lesson() {
 
   const current = steps[pointer];
   const isDone = topic !== null && pointer >= totalSteps;
+
+  /**
+   * Record a completion when the student finishes a subtopic's last question.
+   *
+   * "Last question" is identified positionally rather than by comparing this
+   * step to the next one, because both step builders produce the same shape:
+   * buildSubtopicSteps (deep-linked into one subtopic) and buildSteps (the
+   * whole topic, all four subtopics back to back). In either list, the final
+   * question of a subtopic is the one where questionIndex === totalQuestions-1,
+   * so a student who works through two of four subtopics gets credit for
+   * exactly two.
+   *
+   * Completing does NOT require correct answers -- FeedbackStep lets you
+   * continue after a wrong one, so a completion means "worked through it", not
+   * "scored well". Scoring is what test_attempts is for, when Progress and
+   * Growth Checks get built.
+   */
+  const recordCompletionIfSubtopicFinished = useCallback(
+    async (atPointer: number) => {
+      if (!student || !topic) return;
+      const step = steps[atPointer];
+      if (!step || step.kind !== "question") return;
+      if (step.questionIndex !== step.totalQuestions - 1) return;
+
+      const sub = topic.subtopics[step.subtopicIndex];
+      if (!sub) return;
+
+      const result = await markSubtopicComplete(student.id, sub.id);
+      if (!result.ok) setSaveFailed(true);
+    },
+    [student, topic, steps],
+  );
 
   const canPrev =
     phase === "content" && !!current && (current.kind === "slide" || current.kind === "ready") && pointer > 0;
@@ -273,6 +309,7 @@ function Lesson() {
         heading={scoped ? topic.subtopics[targetSubtopicIndex].title : topic.title}
         backTo={scoped ? `/topic/${topic.id}` : "/dashboard"}
         backLabel={scoped ? "Back to the topic" : "Back to your journey"}
+        saveFailed={saveFailed}
       />
     );
   }
@@ -357,6 +394,11 @@ function Lesson() {
               explanation={current.question.explanation}
               isFinal={pointer === totalSteps - 1}
               onContinue={() => {
+                // Deliberately not awaited. Advancing the lesson should never
+                // wait on a round trip -- if the write is slow or fails, the
+                // student keeps moving and sees a quiet notice on the
+                // completion screen rather than a spinner mid-question.
+                void recordCompletionIfSubtopicFinished(pointer);
                 setPhase("content");
                 setPointer((p) => p + 1);
               }}
@@ -520,7 +562,9 @@ function FeedbackStep({
           </button>
         ) : (
           <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
-            {isFinal ? "Lesson complete · +40 xp" : "+10 xp"}
+            {/* Was "+40 xp" / "+10 xp". No XP rule exists, so there was no
+                number to show -- removed rather than invented. */}
+            {isFinal ? "Lesson complete" : "Nice one"}
           </span>
         )}
 
@@ -542,10 +586,12 @@ function CompletionScreen({
   heading,
   backTo,
   backLabel,
+  saveFailed,
 }: {
   heading: string;
   backTo: string;
   backLabel: string;
+  saveFailed: boolean;
 }) {
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center bg-background px-10 text-center text-foreground">
@@ -564,10 +610,17 @@ function CompletionScreen({
         {heading} — added to your journey. Small steps, real roots.
       </p>
 
+      {/* Only shown when the completion genuinely failed to save. Silence here
+          would be worse than an apology: the student would return to the tree,
+          find the lesson still unfinished, and have no idea why. */}
+      {saveFailed && (
+        <p className="mt-8 max-w-md text-[13.5px] leading-[1.6] text-terracotta" role="alert">
+          We couldn't save this one just now — your progress may not have been
+          recorded. Check your connection and run through it again later.
+        </p>
+      )}
+
       <div className="mt-14 flex items-center gap-8">
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-          +40 xp · Streak 13
-        </span>
         <Link
           to={backTo}
           className="inline-flex items-center gap-2 rounded-full bg-forest px-8 py-3.5 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--forest)_70%,transparent)] transition-transform hover:-translate-y-0.5"

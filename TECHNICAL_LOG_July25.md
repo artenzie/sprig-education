@@ -451,8 +451,88 @@ The lock was confirmed to *engage* and to refuse a correct PIN, but nobody waite
 
 ---
 
+## 12. Real progress — and deciding what a database should actually store
+
+With auth done, the mock data could finally become real: `Dashboard.tsx`'s hardcoded `width: "13%"`, the 24 hand-set node states in `JourneyTree.tsx`, `Topic.tsx`'s `const completed = 0`, and the seven invented weekly scores in `Progress.tsx`. All of them had been waiting on a trustworthy answer to "which student is asking?"
+
+Three things about this turned out to be more interesting than the wiring.
+
+### Store facts, derive opinions
+
+`progress.status` allows three values — `locked`, `available`, `complete`. The obvious reading is that you write all three: seed every student with 20 `locked` rows at sign-up, flip one to `available` when it unlocks, then to `complete` when they finish.
+
+We write **only `complete`**. A row means "this student finished this subtopic". Absence means they haven't. Locked-versus-available is worked out on the client, every render, in `src/lib/journey.ts`.
+
+The reasoning generalises well beyond this project:
+
+- **Two sources of truth eventually disagree.** If lock state is stored, a row can say `locked` for a subtopic the student demonstrably finished. That is a bug that has to be found, explained and repaired. If lock state is *derived*, that bug cannot be represented — there is no field in which to be wrong.
+- **Stored rules need backfills; derived rules don't.** Changing the unlock rule (say, letting any subtopic in a started topic be attempted) is a one-line edit to a pure function. Had lock states been rows, the same change means a migration rewriting every student's data.
+- **Completion is a fact about the past; lock state is an opinion about the present.** Facts don't change. Opinions change whenever the rules do. Storing the fact and computing the opinion means the database only holds things that stay true.
+
+The cost, stated honestly rather than hidden: two of the three enum values are now dead. That is a real wart, and the alternative was worse.
+
+### The bug that would have looked like a data problem
+
+`deriveJourney()` contains this guard, and it is the most important line in the file:
+
+```ts
+const isComplete = hasContent && completedCount === subtopics.length;
+```
+
+Without `hasContent`, consider a topic in Tier 3 with no subtopics authored yet. `completedCount` is 0. `subtopics.length` is 0. And `0 === 0` is **true** — so the topic reports complete.
+
+Only Tier 1 has content, so 15 empty topics would all report complete, the entire canopy would light up green, and the dashboard would read 100%. Worse, it would look like bad data — you'd go hunting in Postgres for rows that were never there, when the fault is a JavaScript expression that is vacuously true over an empty set.
+
+The general shape: **"every element satisfies P" is always true when there are no elements.** Any `.every()`, or any `count === total` check, silently claims success on emptiness. Whenever the answer "all of them" would be surprising for an empty collection, the emptiness needs its own explicit test.
+
+### Where the write happens, and why it's idempotent
+
+One line records everything, in `Lesson.tsx`, fired when a subtopic's last question is answered:
+
+```ts
+if (step.questionIndex !== step.totalQuestions - 1) return;
+```
+
+Identifying the last question *positionally* rather than by comparing against the following step is what lets one trigger serve both flows — the deep-linked single subtopic (`buildSubtopicSteps`) and the whole topic walked end to end (`buildSteps`). A student who does two of four subtopics gets credit for exactly two, with no special-casing.
+
+The write itself:
+
+```ts
+{ onConflict: "student_id,subtopic_id", ignoreDuplicates: true }
+```
+
+`ignoreDuplicates` compiles to Postgres's `ON CONFLICT DO NOTHING`. Redoing a lesson to revise therefore leaves the original `completed_at` alone instead of moving it to today — which matters the moment anything reads those dates, since a streak that rewrites its own history every time a student revisits an old lesson is not a streak. It also means only the INSERT policy is ever exercised, never UPDATE.
+
+It is deliberately not `await`ed. Advancing a lesson should never wait on a round trip; if the write fails, the student keeps moving and sees a quiet notice on the completion screen. Silence there would be the wrong call — they would return to the tree, find the lesson still unfinished, and have no way to know why.
+
+### Completion does not mean correctness
+
+Finishing a subtopic records a completion regardless of how many answers were right, because `FeedbackStep` has always let you continue after a wrong one. During verification several questions were answered wrongly on purpose and the completion still recorded — which is the intended behaviour, not a leak. A completion means "worked through it". Scoring is what `test_attempts` is for.
+
+### Saying "I can't show you this yet"
+
+`Progress.tsx` was the hard one. Its mock data was almost entirely *test scores*, not lesson completion: seven Growth Check results, five per-topic "mastery" percentages, five missed questions with written explanations.
+
+None of it is recoverable from `progress`, and that is a modelling limit rather than a missing query. `progress` records **that** a subtopic was finished — one row, no score. It cannot know how many questions were right, which were missed, or when a test happened. Those belong to `test_attempts`, and nothing writes there because Progress and Growth Checks don't exist.
+
+The tempting move was to relabel completion as "mastery" and let the bars stay full. The page would have looked finished. It would also have been showing a number that does not mean what its label says — and the person most misled would be the student reading "82% mastery" after answering nothing.
+
+So the page now shows real completion (labelled *complete*, not *mastery*) and honest empty states for the rest, saying what will appear and what has to happen first. **An empty state that explains itself is a feature; a full-looking chart built on nothing is a lie with good typography.**
+
+The finished chart and card components were not deleted. They are parked, intact and exported, in `src/components/sprig/growth-check-parked.tsx`. That is what `export` is good for here: `noUnusedLocals` fails the build on an unexported function nobody calls, so exporting is the mechanism that lets completed-but-unwired work sit in the repo without being deleted or breaking compilation. Git history would have preserved it too — but only for someone who knew to go looking.
+
+### Verified against the real database
+
+Signed in with zero progress: the tree drew `I.I` as the current node — it had been hardcoded to `I.IV` — with the other 23 nodes disabled, and `0 / 20` at 0%.
+
+Completing one subtopic through the real UI produced exactly one row. `Topic` then read `1 OF 4 COMPLETE`, subtopic 2 became *Start here*, 3 and 4 stayed locked; the dashboard moved to 5%. Redoing the same lesson left the row count at one and `completed_at` unchanged — idempotency confirmed rather than assumed.
+
+The check worth copying: a second student was signed in and saw `0 / 20`. The progress query carries **no `student_id` filter at all** — it relies entirely on the RLS policy from section 4. Watching a different student see nothing is what turns that reliance from a claim into a demonstrated fact.
+
+---
+
 ## What this unblocks
 
-The mock data can now become real. `Dashboard.tsx`'s hardcoded `width: "13%"`, the 24 hand-set `complete | current | locked` states in `JourneyTree.tsx`, the seven fake weekly scores in `Progress.tsx`, and the comment in `Topic.tsx` that reads *"No auth/progress tracking exists yet, so nothing is really 'complete'"* — all of those were waiting on a trustworthy answer to "which student is asking?"
+Lesson progress is real. What is still fabricated, or simply missing, is everything to do with *assessment*: Progress Checks, Growth Checks, `test_attempts`, and the per-question answer history that both the growth chart and the missed-question cards need. Streak and XP were removed rather than faked in this pass — `daily_checkins` has no writer, and XP has no rule defining what a subtopic is worth.
 
-There is one now, and the policies that make it safe to write against are in place. Persisting real lesson completions and test attempts is the next session.
+That is the next piece of work, and it now has a clear shape: a test flow that writes `test_attempts`, and a decision about whether individual answers are stored alongside it. The UI for the results is already built and waiting.

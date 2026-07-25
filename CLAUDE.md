@@ -43,7 +43,13 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 
 Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ.
 
-Working against the database: login/logout, the first-time PIN change, route guards, and the curriculum reads on Topic and Lesson. Still mock data: the dashboard's percentages and streaks, the journey tree's complete/current/locked states, Progress, Certificate and Library. Persisting real progress and test attempts is the next piece of work — the RLS policies for it are now in place.
+Working against the database: login/logout, the first-time PIN change, route guards, the curriculum reads on Topic and Lesson, and **real lesson progress** — finishing a subtopic's last question writes a `progress` row, which drives the dashboard bar, the journey tree's node states, the Topic page's unlock chain, and the Progress page's per-topic bars.
+
+How progress is stored: **only completions**. A row in `progress` means "this student finished this subtopic"; `locked` and `available` are derived on the client in `src/lib/journey.ts`, never written. Only Tier 1 has content, so tiers 2–4 stay locked — `deriveJourney()` guards against treating a topic with zero subtopics as complete.
+
+Still mock or absent: Certificate and Library. The Progress page shows real completion but its Growth Check chart and missed-questions sections are honest empty states — both need `test_attempts`, and no test flow exists yet. Streak and XP were removed rather than faked (`daily_checkins` has no writer; XP has no defined rule). Building Progress/Growth Checks is the next piece of work.
+
+The Growth Check UI itself already exists, parked and exported in `src/components/sprig/growth-check-parked.tsx` — a finished line chart and missed-question cards, waiting on data rather than on design.
 
 ## Workflow preference
 

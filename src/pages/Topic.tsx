@@ -1,8 +1,10 @@
 import { Link, useParams } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { Play, Circle } from "lucide-react";
+import { Play, Circle, Check, Lock } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 import { supabase } from "@/lib/supabase";
+import { useJourney } from "@/hooks/useJourney";
+import type { SubtopicStatus } from "@/lib/journey";
 
 /* ---------- Data shapes + fetching ---------- */
 
@@ -51,6 +53,11 @@ function Topic() {
   const { topicId } = useParams<{ topicId: string }>();
   const [topic, setTopic] = useState<DbTopic | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Two queries on this page, deliberately. This component needs the topic's
+  // full detail (description, video_url) which the journey hook doesn't carry;
+  // the hook supplies the completion status, so the lock rules live in exactly
+  // one place rather than being re-derived here.
+  const { journey } = useJourney();
 
   useEffect(() => {
     let cancelled = false;
@@ -105,10 +112,15 @@ function Topic() {
     );
   }
 
-  // No auth/progress tracking exists yet, so nothing is really "complete" —
-  // the first subtopic is shown as the suggested starting point and the
-  // rest as open/unlocked, rather than faking completion data.
-  const completed = 0;
+  // Real completion, from the student's own progress rows.
+  const journeyTopic = journey.topics.find((t) => t.id === topic.id);
+  const statusById = new Map<string, SubtopicStatus>(
+    (journeyTopic?.subtopics ?? []).map((s) => [s.id, s.status]),
+  );
+  const completed = journeyTopic?.completedCount ?? 0;
+  // "Start here" belongs on one row only — the first one they can actually
+  // begin — otherwise every unlocked row shouts for attention equally.
+  const startHereId = journeyTopic?.subtopics.find((s) => s.status === "available")?.id ?? null;
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
@@ -183,12 +195,13 @@ function Topic() {
           </div>
 
           <ul className="mt-6 border-t border-border">
-            {topic.subtopics.map((sub, i) => (
+            {topic.subtopics.map((sub) => (
               <SubtopicRow
                 key={sub.id}
                 topic={topic}
                 sub={sub}
-                isSuggestedNext={i === 0}
+                status={statusById.get(sub.id) ?? "locked"}
+                isStartHere={sub.id === startHereId}
               />
             ))}
           </ul>
@@ -210,29 +223,49 @@ function Topic() {
 function SubtopicRow({
   topic,
   sub,
-  isSuggestedNext,
+  status,
+  isStartHere,
 }: {
   topic: DbTopic;
   sub: DbSubtopic;
-  isSuggestedNext: boolean;
+  status: SubtopicStatus;
+  isStartHere: boolean;
 }) {
   const roman = `${toRoman(topic.tier)}.${toRoman(topic.order)}.${toRoman(sub.order)}`;
+  const isLocked = status === "locked";
 
   const rowInner = (
-    <div className="group flex items-start gap-6 py-8 transition-colors hover:bg-forest/[0.03]">
+    <div
+      className={`group flex items-start gap-6 py-8 transition-colors ${
+        isLocked ? "opacity-55" : "hover:bg-forest/[0.03]"
+      }`}
+    >
       <div className="pt-1">
-        <StatusIndicator suggestedNext={isSuggestedNext} />
+        <StatusIndicator status={status} isStartHere={isStartHere} />
       </div>
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
           <span>{roman}</span>
-          {isSuggestedNext && <span className="tracking-[0.28em] text-terracotta">Start here</span>}
+          {isStartHere && <span className="tracking-[0.28em] text-terracotta">Start here</span>}
+          {status === "complete" && <span className="tracking-[0.28em] text-forest">Complete</span>}
         </div>
         <h3 className="mt-2 text-[19px] font-medium leading-[1.35] text-foreground">{sub.title}</h3>
       </div>
     </div>
   );
+
+  // A locked row renders as plain markup rather than a Link. Note this is a
+  // courtesy, not a control: /lesson?subtopic=... typed by hand still loads.
+  // That's fine — the only thing a student can reach early is their own
+  // curriculum, and the write path records real completions either way.
+  if (isLocked) {
+    return (
+      <li className="border-b border-border" aria-disabled>
+        {rowInner}
+      </li>
+    );
+  }
 
   return (
     <li className="border-b border-border">
@@ -243,14 +276,28 @@ function SubtopicRow({
   );
 }
 
-function StatusIndicator({ suggestedNext }: { suggestedNext: boolean }) {
-  if (suggestedNext) {
+function StatusIndicator({ status, isStartHere }: { status: SubtopicStatus; isStartHere: boolean }) {
+  if (status === "complete") {
+    return (
+      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-forest text-primary-foreground">
+        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+      </span>
+    );
+  }
+  if (isStartHere) {
     return (
       <span className="relative flex h-7 w-7 items-center justify-center">
         <span className="absolute inset-0 rounded-full bg-forest/15 blur-[6px]" />
         <span className="relative flex h-7 w-7 items-center justify-center rounded-full border-2 border-forest">
           <span className="h-2.5 w-2.5 rounded-full bg-forest" />
         </span>
+      </span>
+    );
+  }
+  if (status === "locked") {
+    return (
+      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-muted-foreground/70">
+        <Lock className="h-2.5 w-2.5" strokeWidth={2} />
       </span>
     );
   }

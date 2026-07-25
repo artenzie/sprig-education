@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Lock } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+import type { Journey, TopicStatus } from "@/lib/journey";
 
 // -----------------------------------------------------------------------------
 // Hand-drawn botanical journey tree
@@ -13,9 +12,22 @@ import { supabase } from "@/lib/supabase";
 // to draw those branches, so the dots sit exactly on the line.
 // -----------------------------------------------------------------------------
 
-type Status = "complete" | "current" | "locked";
 type Kind = "lesson" | "milestone";
 
+/**
+ * A node's POSITION is design; its STATUS is data.
+ *
+ * Everything in this file below the node list -- the Bezier paths, the sampled
+ * coordinates, the leaf placements -- is hand-tuned artwork and stays
+ * hardcoded. What used to be hardcoded and shouldn't have been is `status`:
+ * all 24 nodes carried a literal "complete" / "current" / "locked". That is now
+ * derived from the student's real progress and passed in.
+ *
+ * `tier` + `topicOrder` are how a drawn node finds its real topic row. Every
+ * lesson node carries them, including the canopy ones that have no content
+ * authored yet -- so when Tiers 2-4 get seeded, the tree lights up on its own
+ * with no change to this file.
+ */
 type Node = {
   id: string;
   x: number;
@@ -24,8 +36,9 @@ type Node = {
   title: string;
   titleLines?: [string, string];
   kind: Kind;
-  status: Status;
-  minutes?: number;
+  tier: number;
+  /** Absent on milestone nodes, which summarise a whole tier rather than one topic. */
+  topicOrder?: number;
   side: "left" | "right";
 };
 
@@ -115,39 +128,36 @@ const TWIGS: string[] = [];
 
 const nodes: Node[] = [
   // Trunk — Tier I "Essentials", bottom to top
-  { id: "t1", x: TRUNK_X, y: 2400, chapter: "I.I",   title: "The Psychology of Spending",                kind: "lesson", status: "complete", side: "right" },
-  { id: "t2", x: TRUNK_X, y: 2225, chapter: "I.II",  title: "Where Money Really Comes From",             kind: "lesson", status: "complete", side: "left"  },
-  { id: "t3", x: TRUNK_X, y: 2050, chapter: "I.III", title: "Making Money Decisions With What You Have", titleLines: ["Making Money Decisions", "With What You Have"], kind: "lesson", status: "complete", side: "right" },
-  { id: "t4", x: TRUNK_X, y: 1875, chapter: "I.IV",  title: "How Banks and Money Actually Work",         titleLines: ["How Banks and Money", "Actually Work"], kind: "lesson", status: "current", minutes: 9, side: "left" },
-  { id: "t5", x: TRUNK_X, y: 1700, chapter: "I.V",   title: "Setting a Goal That Actually Matters to You", titleLines: ["Setting a Goal That", "Actually Matters to You"], kind: "lesson", status: "locked", side: "right" },
-  { id: "tm", x: TRUNK_X, y: 1560, chapter: "I",     title: "Essentials",                                kind: "milestone", status: "locked", side: "left" },
-  // t1-t5 above are Tier 1's five topics in order — matched to their real
-  // Supabase `topics.id` below by `topics.order` (1-5). Canopy nodes (Tiers
-  // 2-4) have no seeded content yet, so they stay unmapped and locked.
+  { id: "t1", x: TRUNK_X, y: 2400, chapter: "I.I",   title: "The Psychology of Spending",                kind: "lesson", tier: 1, topicOrder: 1, side: "right" },
+  { id: "t2", x: TRUNK_X, y: 2225, chapter: "I.II",  title: "Where Money Really Comes From",             kind: "lesson", tier: 1, topicOrder: 2, side: "left"  },
+  { id: "t3", x: TRUNK_X, y: 2050, chapter: "I.III", title: "Making Money Decisions With What You Have", titleLines: ["Making Money Decisions", "With What You Have"], kind: "lesson", tier: 1, topicOrder: 3, side: "right" },
+  { id: "t4", x: TRUNK_X, y: 1875, chapter: "I.IV",  title: "How Banks and Money Actually Work",         titleLines: ["How Banks and Money", "Actually Work"], kind: "lesson", tier: 1, topicOrder: 4, side: "left" },
+  { id: "t5", x: TRUNK_X, y: 1700, chapter: "I.V",   title: "Setting a Goal That Actually Matters to You", titleLines: ["Setting a Goal That", "Actually Matters to You"], kind: "lesson", tier: 1, topicOrder: 5, side: "right" },
+  { id: "tm", x: TRUNK_X, y: 1560, chapter: "I",     title: "Essentials",                                kind: "milestone", tier: 1, side: "left" },
 
   // Left canopy — Application (sampled evenly along branch centerline)
-  { id: "l1", x: 761,  y: 1483, chapter: "II.I",   title: "Budgeting Basics",                kind: "lesson", status: "locked", side: "left" },
-  { id: "l2", x: 561,  y: 1327, chapter: "II.II",  title: "How Pricing Tricks You",          kind: "lesson", status: "locked", side: "left" },
-  { id: "l3", x: 410,  y: 1122, chapter: "II.III", title: "Subscriptions & Recurring Costs", titleLines: ["Subscriptions &", "Recurring Costs"], kind: "lesson", status: "locked", side: "left" },
-  { id: "l4", x: 327,  y: 882,  chapter: "II.IV",  title: "Buy Now, Pay Later",              kind: "lesson", status: "locked", side: "left" },
-  { id: "l5", x: 268,  y: 634,  chapter: "II.V",   title: "Scams & Financial Safety",        titleLines: ["Scams &", "Financial Safety"], kind: "lesson", status: "locked", side: "left" },
-  { id: "lm", x: 240,  y: 381,  chapter: "II",     title: "Application",                     kind: "milestone", status: "locked", side: "left" },
+  { id: "l1", x: 761,  y: 1483, chapter: "II.I",   title: "Budgeting Basics",                kind: "lesson", tier: 2, topicOrder: 1, side: "left" },
+  { id: "l2", x: 561,  y: 1327, chapter: "II.II",  title: "How Pricing Tricks You",          kind: "lesson", tier: 2, topicOrder: 2, side: "left" },
+  { id: "l3", x: 410,  y: 1122, chapter: "II.III", title: "Subscriptions & Recurring Costs", titleLines: ["Subscriptions &", "Recurring Costs"], kind: "lesson", tier: 2, topicOrder: 3, side: "left" },
+  { id: "l4", x: 327,  y: 882,  chapter: "II.IV",  title: "Buy Now, Pay Later",              kind: "lesson", tier: 2, topicOrder: 4, side: "left" },
+  { id: "l5", x: 268,  y: 634,  chapter: "II.V",   title: "Scams & Financial Safety",        titleLines: ["Scams &", "Financial Safety"], kind: "lesson", tier: 2, topicOrder: 5, side: "left" },
+  { id: "lm", x: 240,  y: 381,  chapter: "II",     title: "Application",                     kind: "milestone", tier: 2, side: "left" },
 
   // Middle canopy — Mathematics
-  { id: "m1", x: 995,  y: 1390, chapter: "III.I",   title: "Percentages in Real Life",       titleLines: ["Percentages in", "Real Life"], kind: "lesson", status: "locked", side: "left" },
-  { id: "m2", x: 1010, y: 1188, chapter: "III.II",  title: "Simple Interest",                kind: "lesson", status: "locked", side: "right" },
-  { id: "m3", x: 1013, y: 986,  chapter: "III.III", title: "Compound Interest Intuitively",  titleLines: ["Compound Interest", "Intuitively"], kind: "lesson", status: "locked", side: "left" },
-  { id: "m4", x: 1010, y: 784,  chapter: "III.IV",  title: "Inflation Basics",               kind: "lesson", status: "locked", side: "right" },
-  { id: "m5", x: 1007, y: 582,  chapter: "III.V",   title: "Why Some Choices Are Riskier",   titleLines: ["Why Some Choices", "Are Riskier"], kind: "lesson", status: "locked", side: "left" },
-  { id: "mm", x: 1014, y: 380,  chapter: "III",     title: "Mathematics",                    kind: "milestone", status: "locked", side: "left" },
+  { id: "m1", x: 995,  y: 1390, chapter: "III.I",   title: "Percentages in Real Life",       titleLines: ["Percentages in", "Real Life"], kind: "lesson", tier: 3, topicOrder: 1, side: "left" },
+  { id: "m2", x: 1010, y: 1188, chapter: "III.II",  title: "Simple Interest",                kind: "lesson", tier: 3, topicOrder: 2, side: "right" },
+  { id: "m3", x: 1013, y: 986,  chapter: "III.III", title: "Compound Interest Intuitively",  titleLines: ["Compound Interest", "Intuitively"], kind: "lesson", tier: 3, topicOrder: 3, side: "left" },
+  { id: "m4", x: 1010, y: 784,  chapter: "III.IV",  title: "Inflation Basics",               kind: "lesson", tier: 3, topicOrder: 4, side: "right" },
+  { id: "m5", x: 1007, y: 582,  chapter: "III.V",   title: "Why Some Choices Are Riskier",   titleLines: ["Why Some Choices", "Are Riskier"], kind: "lesson", tier: 3, topicOrder: 5, side: "left" },
+  { id: "mm", x: 1014, y: 380,  chapter: "III",     title: "Mathematics",                    kind: "milestone", tier: 3, side: "left" },
 
   // Right canopy — Mastery
-  { id: "r1", x: 1238, y: 1505, chapter: "IV.I",   title: "Budget Calculator (Python)",          titleLines: ["Budget Calculator", "(Python)"], kind: "lesson", status: "locked", side: "right" },
-  { id: "r2", x: 1436, y: 1362, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], kind: "lesson", status: "locked", side: "right" },
-  { id: "r3", x: 1571, y: 1160, chapter: "IV.III", title: "Present & Future Value",             kind: "lesson", status: "locked", side: "right" },
-  { id: "r4", x: 1647, y: 926,  chapter: "IV.IV",  title: "Behavioural Finance",                kind: "lesson", status: "locked", side: "right" },
-  { id: "r5", x: 1688, y: 685,  chapter: "IV.V",   title: "Introduction to Crypto",             kind: "lesson", status: "locked", side: "right" },
-  { id: "rm", x: 1705, y: 441,  chapter: "IV",     title: "Mastery",                            kind: "milestone", status: "locked", side: "right" },
+  { id: "r1", x: 1238, y: 1505, chapter: "IV.I",   title: "Budget Calculator (Python)",          titleLines: ["Budget Calculator", "(Python)"], kind: "lesson", tier: 4, topicOrder: 1, side: "right" },
+  { id: "r2", x: 1436, y: 1362, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], kind: "lesson", tier: 4, topicOrder: 2, side: "right" },
+  { id: "r3", x: 1571, y: 1160, chapter: "IV.III", title: "Present & Future Value",             kind: "lesson", tier: 4, topicOrder: 3, side: "right" },
+  { id: "r4", x: 1647, y: 926,  chapter: "IV.IV",  title: "Behavioural Finance",                kind: "lesson", tier: 4, topicOrder: 4, side: "right" },
+  { id: "r5", x: 1688, y: 685,  chapter: "IV.V",   title: "Introduction to Crypto",             kind: "lesson", tier: 4, topicOrder: 5, side: "right" },
+  { id: "rm", x: 1705, y: 441,  chapter: "IV",     title: "Mastery",                            kind: "milestone", tier: 4, side: "right" },
 ];
 
 // --- Leaves -----------------------------------------------------------------
@@ -223,45 +233,23 @@ function Leaf({ cx, cy, rot, s = 1, grown }: LeafSpec) {
   );
 }
 
-// --- Trunk node → real topic id -----------------------------------------
-
-// t1..t5 are Tier 1's five topics in order; the milestone node ("tm") has no
-// backing topic. Populated from Supabase (topics.order -> topics.id) so the
-// tree links to real content instead of nowhere.
-const TRUNK_NODE_ORDER: Record<string, number> = {
-  t1: 1,
-  t2: 2,
-  t3: 3,
-  t4: 4,
-  t5: 5,
-};
-
 // --- Main --------------------------------------------------------------------
 
-export function JourneyTree() {
+/**
+ * The tree no longer fetches anything itself.
+ *
+ * It used to run its own `topics` query purely to turn node ids into topic
+ * ids, which meant the dashboard and the tree each hit the database for
+ * overlapping data on the same screen. Now the dashboard loads the journey
+ * once via useJourney() and passes it down. One query, one source of truth,
+ * and the tree becomes a pure function of its props — which is also what makes
+ * it re-render correctly the moment a lesson is completed.
+ */
+export function JourneyTree({ journey }: { journey: Journey }) {
   const navigate = useNavigate();
-  const [topicIdByNode, setTopicIdByNode] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    let cancelled = false;
-    supabase
-      .from("topics")
-      .select("id, order")
-      .eq("tier", 1)
-      .then(({ data, error }) => {
-        if (cancelled || error || !data) return;
-        const orderToId = new Map(data.map((t) => [t.order, t.id as string]));
-        const map: Record<string, string> = {};
-        for (const [nodeId, order] of Object.entries(TRUNK_NODE_ORDER)) {
-          const topicId = orderToId.get(order);
-          if (topicId) map[nodeId] = topicId;
-        }
-        setTopicIdByNode(map);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  // tier+order -> the real topic, for both the link target and the status.
+  const byPosition = new Map(journey.topics.map((t) => [`${t.tier}.${t.order}`, t]));
 
   return (
     <div className="relative mx-auto w-full" style={{ aspectRatio: `${VBW} / ${VBH}` }}>
@@ -362,14 +350,27 @@ export function JourneyTree() {
       </svg>
 
       {/* Node overlay */}
-      {nodes.map((n) => (
-        <LessonMark
-          key={n.id}
-          node={n}
-          topicId={topicIdByNode[n.id]}
-          onOpen={(topicId) => navigate(`/topic/${topicId}`)}
-        />
-      ))}
+      {nodes.map((n) => {
+        // A milestone summarises a whole tier: complete only once every topic
+        // in that tier is, which (while tiers 2-4 have no content) is never.
+        if (n.kind === "milestone") {
+          const tierTopics = journey.topics.filter((t) => t.tier === n.tier);
+          const done = tierTopics.length > 0 && tierTopics.every((t) => t.status === "complete");
+          return <LessonMark key={n.id} node={n} status={done ? "complete" : "locked"} />;
+        }
+
+        const topic = byPosition.get(`${n.tier}.${n.topicOrder}`);
+        return (
+          <LessonMark
+            key={n.id}
+            node={n}
+            // A node with no matching topic row isn't just unstarted, it's
+            // undrawable — nothing to open. Locked is the honest state.
+            status={topic?.status ?? "locked"}
+            onOpen={topic && topic.status !== "locked" ? () => navigate(`/topic/${topic.id}`) : undefined}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -378,12 +379,12 @@ export function JourneyTree() {
 
 function LessonMark({
   node,
-  topicId,
+  status,
   onOpen,
 }: {
   node: Node;
-  topicId?: string;
-  onOpen: (topicId: string) => void;
+  status: TopicStatus;
+  onOpen?: () => void;
 }) {
   const isMilestone = node.kind === "milestone";
   const size = isMilestone ? 46 : 22;
@@ -393,9 +394,9 @@ function LessonMark({
   let dotClass = "";
   if (isMilestone) {
     dotClass = "bg-[#2C4A38] text-white border border-[#1E3527] shadow-[0_2px_6px_-2px_rgba(20,40,25,0.4)]";
-  } else if (node.status === "complete") {
+  } else if (status === "complete") {
     dotClass = "bg-forest text-primary-foreground";
-  } else if (node.status === "current") {
+  } else if (status === "current") {
     dotClass = "bg-forest text-primary-foreground sprig-glow ring-2 ring-terracotta/60 ring-offset-2 ring-offset-background";
   } else {
     dotClass = "bg-cream text-muted-foreground border border-border";
@@ -404,7 +405,7 @@ function LessonMark({
   const labelSide = node.side;
   const gap = isMilestone
     ? size / 2 + 22
-    : size / 2 + (node.status === "current" ? 58 : 30);
+    : size / 2 + (status === "current" ? 58 : 30);
   const labelWidth = isMilestone ? 180 : 200;
 
   // Milestone label placement:
@@ -429,14 +430,14 @@ function LessonMark({
         >
           <div
             className={`${milestoneLeft || labelSide === "left" ? "text-right" : "text-left"} ${
-              !isMilestone && node.status === "locked" ? "opacity-60" : ""
+              !isMilestone && status === "locked" ? "opacity-60" : ""
             }`}
             style={{ width: labelWidth }}
           >
             {!isMilestone && (
               <div className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
                 {node.chapter}
-                {node.status === "current" && (
+                {status === "current" && (
                   <span className="ml-2 text-terracotta">Now</span>
                 )}
               </div>
@@ -446,7 +447,7 @@ function LessonMark({
                 isMilestone
                   ? "font-display italic text-[22px] leading-none tracking-[-0.01em] text-[#2C4A38] whitespace-nowrap"
                   : `mt-0.5 text-[12.5px] leading-[1.28] ${
-                      node.status === "current" ? "text-forest font-semibold" : "text-foreground"
+                      status === "current" ? "text-forest font-semibold" : "text-foreground"
                     }`
               }
             >
@@ -463,18 +464,18 @@ function LessonMark({
       {/* Dot */}
       <button
         aria-label={node.title}
-        disabled={node.status === "locked" || !topicId}
-        onClick={() => topicId && onOpen(topicId)}
+        disabled={!onOpen}
+        onClick={onOpen}
         className={`relative -translate-x-1/2 -translate-y-1/2 flex items-center justify-center rounded-full transition-transform ${dotClass} ${
-          node.status === "current" ? "scale-110" : ""
-        } ${topicId && node.status !== "locked" ? "cursor-pointer" : ""}`}
+          status === "current" ? "scale-110" : ""
+        } ${onOpen ? "cursor-pointer" : ""}`}
         style={{ width: size, height: size }}
       >
         {isMilestone ? (
           <span className="font-display italic text-[15px]">{node.chapter}</span>
-        ) : node.status === "complete" ? (
+        ) : status === "complete" ? (
           <Check className="h-2.5 w-2.5" strokeWidth={3} />
-        ) : node.status === "current" ? (
+        ) : status === "current" ? (
           <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
         ) : (
           <Lock className="h-2.5 w-2.5" />
