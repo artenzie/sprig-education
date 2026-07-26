@@ -43,11 +43,29 @@ export type AnswerOutcome = "correct" | "incorrect" | "unsure";
 
 /**
  * What the student actually entered, in the shape the question type produces:
- * an option index for mcq, a list of indices for multi, a number for num, a
- * string for text, and null for an unsure (they entered nothing).
+ * an option index for mcq, a list of indices for multi, and null for an unsure
+ * (they entered nothing).
  *
  * Stored so the "worth another look" cards can later show a student what they
  * picked, not merely that they were wrong.
+ *
+ * NOTE — `num` answers arrive as strings, not numbers. A DOM input reports
+ * `value` as a string even when it is `type="number"`, and nothing between the
+ * input and this type coerces it, so a numeric answer of 80 is stored as `"80"`.
+ * Confirmed against a real attempt on 26 July 2026: `response` came back as
+ * `"80"` and `"30"` for the two `num` questions.
+ *
+ * TypeScript stays quiet about it because `string` is already in this union for
+ * the `text` type, so the wrong branch is still a legal value. That is exactly
+ * why it went unnoticed.
+ *
+ * Harmless today, because nothing reads a stored `num` response back — the
+ * outcome is decided at answer time and only `outcome` is used afterwards. It
+ * would bite the first time something compares a response numerically
+ * (`response === 80` is false for `"80"`), which the missed-question cards are
+ * the likely candidate to do. Fix it by coercing at the point of capture rather
+ * than by widening anything here: the stored shape should match the question
+ * type, and rows already written would need a migration either way.
  */
 export type QuestionResponse = number | number[] | string | null;
 
