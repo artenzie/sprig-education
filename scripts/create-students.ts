@@ -78,6 +78,34 @@ async function main() {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Check the teacher exists before creating anybody.
+  //
+  // Without this, a mistyped uuid is caught only by the foreign key on
+  // students.teacher_id — which fires on the FIRST insert, after that student's
+  // auth user has already been created. The rollback handles it, but the loop
+  // then does the same thing for every remaining student, so a single typo
+  // produces N identical failures and no accounts. Failing here costs one query
+  // and turns that into one clear message.
+  if (teacherId) {
+    const { data: teacher, error: teacherError } = await admin
+      .from("teachers")
+      .select("id, email")
+      .eq("id", teacherId)
+      .maybeSingle();
+
+    if (teacherError) {
+      fail(`Could not read the teachers table: ${teacherError.message}`);
+    }
+    if (!teacher) {
+      fail(
+        `No teacher exists with id ${teacherId}.\n` +
+          "Create one first:\n" +
+          '  node --env-file=.env scripts/create-teacher.ts you@school.uk --school "Your School"',
+      );
+    }
+    console.log(`\nAssigning to ${teacher.email}.`);
+  }
+
   const { data: existing, error: existingError } = await admin.from("students").select("nickname");
   if (existingError) {
     fail(`Could not read existing students: ${existingError.message}`);
@@ -145,12 +173,20 @@ async function main() {
   // Excel's escape hatch for "this is text, leave it alone", and Google Sheets
   // and LibreOffice honour it too. Anything reading the file programmatically
   // sees the literal ="000000", so parse accordingly if that ever matters.
+  //
+  // Note `path` is the name we'd LIKE and `writtenTo` is the name we actually
+  // used -- they differ whenever a list already exists from earlier the same
+  // day. Reporting `path` instead of `writtenTo` was a real bug: the file went
+  // to students-<date>-2.csv while the message named students-<date>.csv, which
+  // still held the PREVIOUS batch. A teacher following that message would hand
+  // out nicknames already belonging to other students. Keep these two in step.
   const path = `students-${new Date().toISOString().slice(0, 10)}.csv`;
+  const writtenTo = appendSuffixIfExists(path);
   const rows = ["nickname,starter_pin", ...created.map((s) => `"${s.nickname}",="${s.pin}"`)];
-  writeFileSync(appendSuffixIfExists(path), rows.join("\n") + "\n", "utf8");
+  writeFileSync(writtenTo, rows.join("\n") + "\n", "utf8");
 
   console.log(
-    `\n${created.length} student${created.length === 1 ? "" : "s"} created. Hand-out list written to ${path}.\n` +
+    `\n${created.length} student${created.length === 1 ? "" : "s"} created. Hand-out list written to ${writtenTo}.\n` +
       `Everyone starts on PIN ${DEFAULT_PIN} and must change it at first login.\n` +
       `That file is gitignored — delete it once the PINs have been distributed.\n`,
   );

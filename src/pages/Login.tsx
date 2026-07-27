@@ -6,12 +6,16 @@ import { useAuth } from "@/context/auth";
 import { PIN_LENGTH, keepDigits } from "@/lib/studentAuth";
 
 function Login() {
-  const { status } = useAuth();
+  const { status, role } = useAuth();
 
-  // Already signed in — no reason to show them a login form. If they still
-  // owe us a PIN change, RequireAuth on /dashboard will pick that up.
+  // Already signed in — no reason to show them a login form. Which half of the
+  // app they belong to is decided by which table has a row for them, so this
+  // has to ask. Sending a teacher to /dashboard would bounce them straight to
+  // /teacher; sending a student to /teacher would bounce them back. Both work,
+  // and both would flash a screen nobody meant to show. If a student still
+  // owes us a PIN change, RequireAuth on /dashboard picks that up.
   if (status === "authed") {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={role === "teacher" ? "/teacher" : "/dashboard"} replace />;
   }
 
   return (
@@ -172,8 +176,50 @@ function StudentBox() {
   );
 }
 
+/**
+ * The teacher's way in.
+ *
+ * This used to be a mock with a Log in / Sign up toggle. The toggle is gone,
+ * and not just because the signup half was never wired: there is no signup at
+ * all. New-user signups are off project-wide in the Supabase dashboard, and
+ * turning them on so teachers could register themselves would also re-open
+ * self-registration to anyone who found the endpoint — with nothing to tell a
+ * real teacher from a stranger curious about a class. During the pilot,
+ * accounts are made with scripts/create-teacher.ts by someone holding the
+ * service-role key. A form that cannot work is worse than no form.
+ *
+ * The "Parent" in the heading is aspirational and stays for now; parents have
+ * no account type yet.
+ */
 function AdultBox() {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const navigate = useNavigate();
+  const { signInWithEmail } = useAuth();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+
+    setError(null);
+    setPending(true);
+    try {
+      const result = await signInWithEmail(email, password);
+      if (!result.ok) {
+        setError(result.message);
+        // Clear the password but keep the email, for the same reason the
+        // student form keeps the nickname: it's almost never the wrong half.
+        setPassword("");
+        return;
+      }
+      navigate("/teacher", { replace: true });
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div className="col-span-12 lg:col-span-6">
@@ -184,73 +230,57 @@ function AdultBox() {
           <span>Teacher &nbsp;·&nbsp; Parent</span>
         </div>
 
-        {/* Toggle */}
-        <div className="mt-6 inline-flex self-start border border-border/70 p-0.5">
-          <ToggleBtn
-            active={mode === "login"}
-            onClick={() => setMode("login")}
-          >
-            Log in
-          </ToggleBtn>
-          <ToggleBtn
-            active={mode === "signup"}
-            onClick={() => setMode("signup")}
-          >
-            Sign up
-          </ToggleBtn>
-        </div>
-
         <h2 className="mt-6 font-display text-[34px] font-normal leading-[1.05] tracking-[-0.03em]">
-          {mode === "login" ? (
-            <>
-              Welcome{" "}
-              <em className="font-normal italic text-forest">back</em>.
-            </>
-          ) : (
-            <>
-              Grow a{" "}
-              <em className="font-normal italic text-forest">classroom</em>.
-            </>
-          )}
+          Welcome <em className="font-normal italic text-forest">back</em>.
         </h2>
 
         <p className="mt-4 text-[14px] leading-[1.7] text-muted-foreground">
-          {mode === "login"
-            ? "Sign in to manage your students, see progress, and assign new nicknames."
-            : "Create a free account. Add your class, generate anonymous nicknames, and track progress without collecting student data."}
+          Sign in to unlock a locked-out student or reset a forgotten PIN.
         </p>
 
-        <form
-          className="mt-9 space-y-6"
-          onSubmit={(e) => e.preventDefault()}
-        >
-          {mode === "signup" && (
-            <FieldLine label="Name" placeholder="Ms. Bennett" />
-          )}
+        <form className="mt-9 space-y-6" onSubmit={handleSubmit}>
           <FieldLine
             label="Email"
             placeholder="you@school.uk"
             type="email"
+            value={email}
+            onChange={setEmail}
+            autoComplete="username"
+            disabled={pending}
           />
           <FieldLine
             label="Password"
-            placeholder="At least 8 characters"
+            placeholder="Your password"
             type="password"
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+            disabled={pending}
           />
+
+          {error && (
+            <p
+              role="alert"
+              className="text-[13px] leading-[1.6] text-[color:var(--destructive)]"
+            >
+              {error}
+            </p>
+          )}
 
           <button
             type="submit"
-            className="group mt-2 inline-flex items-center gap-3 text-left"
+            disabled={pending}
+            className="group mt-2 inline-flex items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5">
+            <span className="flex h-11 w-11 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5 group-disabled:translate-y-0">
               <ArrowUpRight className="h-4 w-4" />
             </span>
             <span>
               <span className="block font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                {mode === "login" ? "Continue" : "Create account"}
+                {pending ? "Checking" : "Continue"}
               </span>
               <span className="block text-[15px] font-medium text-foreground">
-                {mode === "login" ? "Log in" : "Sign up"}
+                {pending ? "One moment…" : "Log in"}
               </span>
             </span>
           </button>
@@ -259,31 +289,9 @@ function AdultBox() {
         <div className="mt-auto pt-10">
           <div className="h-px w-full bg-border/70" />
           <p className="mt-5 text-[13px] leading-[1.7] text-muted-foreground">
-            {mode === "login" ? (
-              <>
-                New here?{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("signup")}
-                  className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-forest"
-                >
-                  Create an account
-                </button>
-                .
-              </>
-            ) : (
-              <>
-                Already have an account?{" "}
-                <button
-                  type="button"
-                  onClick={() => setMode("login")}
-                  className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-forest"
-                >
-                  Log in
-                </button>
-                .
-              </>
-            )}
+            Teacher accounts are set up for you during the pilot.{" "}
+            <span className="text-foreground">Get in touch</span> and we'll make
+            you one.
           </p>
         </div>
       </div>
@@ -291,37 +299,13 @@ function AdultBox() {
   );
 }
 
-function ToggleBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-4 py-2 font-mono text-[10.5px] uppercase tracking-[0.24em] transition-colors ${
-        active
-          ? "bg-forest text-primary-foreground"
-          : "bg-transparent text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
 /**
  * The underline-style input used by both boxes.
  *
- * `value`/`onChange` are optional so the teacher/parent form, which is still
- * a static mock, keeps working untouched as an uncontrolled input. Pass both
- * or neither — passing only `value` makes React complain about a controlled
- * input with no change handler.
+ * `value`/`onChange` are still optional, though both boxes now pass them —
+ * they were optional so the teacher form could sit here as an uncontrolled
+ * mock, and that is over. Pass both or neither: passing only `value` makes
+ * React complain about a controlled input with no change handler.
  */
 function FieldLine({
   label,

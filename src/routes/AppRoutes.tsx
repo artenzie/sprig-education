@@ -1,5 +1,6 @@
 import { Navigate, Routes, Route } from 'react-router-dom'
 import { RequireAuth } from './RequireAuth'
+import { RequireTeacher } from './RequireTeacher'
 import Landing from '../pages/Landing'
 import Login from '../pages/Login'
 import SetPin from '../pages/SetPin'
@@ -11,6 +12,7 @@ import Progress from '../pages/Progress'
 import TestFlow from '../pages/TestFlow'
 import Certificate from '../pages/Certificate'
 import Help from '../pages/Help'
+import TeacherStudents from '../pages/TeacherStudents'
 
 function AppRoutes() {
   return (
@@ -40,6 +42,14 @@ function AppRoutes() {
             will reuse this with an added topic filter rather than a new page. */}
         <Route path="/test" element={<TestFlow />} />
         <Route path="/certificate" element={<Certificate />} />
+      </Route>
+
+      {/* Signed in as a teacher. A separate guard rather than a flag on
+          RequireAuth, because the two check opposite things: RequireAuth
+          insists on a `students` row and a completed PIN change, neither of
+          which a teacher has or ever will. */}
+      <Route element={<RequireTeacher />}>
+        <Route path="/teacher" element={<TeacherStudents />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

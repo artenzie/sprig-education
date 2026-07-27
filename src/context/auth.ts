@@ -26,6 +26,35 @@ export type Student = {
 };
 
 /**
+ * The signed-in teacher — the same idea as Student, one table over.
+ *
+ * teachers.id is also the auth user id (see
+ * supabase/migrations/20260727000000_teacher_accounts.sql), for exactly the
+ * reason students.id is: it makes `auth.uid() = teacher_id` a sufficient
+ * ownership check, which is what every teacher policy and every teacher
+ * function in the database relies on.
+ *
+ * Unlike a student, a teacher has a real email address and it is not a secret
+ * from them — there is no synthetic-address bridge here.
+ */
+export type Teacher = {
+  id: string;
+  email: string;
+  school_name: string | null;
+};
+
+/**
+ * Which half of the app a session belongs to.
+ *
+ * A session is one or the other, decided by which table has a row for
+ * auth.uid() — never by anything the browser stores or chooses. `null` means
+ * signed in with neither, which shouldn't happen (both creation scripts write
+ * the profile row alongside the auth user) but is handled rather than assumed
+ * away; see AccountIncomplete in src/routes/RequireAuth.tsx.
+ */
+export type Role = "student" | "teacher" | null;
+
+/**
  * "loading" matters more than it looks. Restoring a session from localStorage
  * is asynchronous, so on every page load there is a moment where we genuinely
  * do not know whether anyone is signed in. Treating that moment as "signed
@@ -39,7 +68,10 @@ export type AuthValue = {
   status: AuthStatus;
   session: Session | null;
   student: Student | null;
+  teacher: Teacher | null;
+  role: Role;
   signInWithNickname: (nickname: string, pin: string) => Promise<SignInResult>;
+  signInWithEmail: (email: string, password: string) => Promise<SignInResult>;
   signOut: () => Promise<void>;
   refreshStudent: () => Promise<void>;
 };

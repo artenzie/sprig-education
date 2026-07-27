@@ -19,8 +19,17 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 - `students.id` **is** `auth.users.id`. Every RLS policy is therefore just `auth.uid() = student_id`.
 - PINs are bcrypt-hashed and unreadable — a forgotten PIN is reset by a teacher, never looked up.
 - Accounts start on PIN `000000` with `must_change_pin = true`, and `RequireAuth` blocks every route until it's changed.
-- Accounts are created by `node --env-file=.env scripts/create-students.ts <count>` (needs the service-role key, local only).
+- Accounts are created by `node --env-file=.env scripts/create-students.ts <count> --teacher <uuid>` (needs the service-role key, local only).
 - **Required Supabase dashboard settings**: email confirmations OFF, new-user signups OFF, and the sign-in rate limit raised well above class size (a whole class shares one school IP).
+
+## Teacher accounts
+
+- Teachers sign in with a **real email + password** — no synthetic-address bridge, none of the student nickname machinery applies.
+- `teachers.id` **is** `auth.users.id`, exactly as for students, so every teacher rule is `auth.uid() = teacher_id`.
+- **There is no signup.** New-user signups are OFF project-wide, and the Login page's Teacher/Parent box is login-only by design. Accounts come from `node --env-file=.env scripts/create-teacher.ts <email> --school "..."`, which *generates* a 24-character password and prints it once. Run it **before** `create-students.ts --teacher <uuid>`.
+- A teacher sees only their own students (`students.teacher_id = them`), via one RLS policy. They can do exactly two things, through security-definer functions that check ownership in the database: **clear a lockout** and **reset a PIN** to a random 6 digits shown once, which also forces `must_change_pin` back to true, clears the lockout and kills live sessions. Every action is logged to `teacher_actions`, capped at 40/hour.
+- Teachers have **no** access to `progress`, `test_attempts` or the check-ins yet. Class progress is separate work and needs its own thinking about what an anonymous student's teacher should see.
+- `teacher_reset_pin()` writes a bcrypt hash straight into `auth.users` — the free-plan route. Its failure mode is silent (update succeeds, student still can't log in), so verify a reset by **actually signing in with the new PIN**, never by the function returning cleanly. The Edge Function upgrade path is noted in the migration.
 
 ## Design system
 
@@ -41,7 +50,7 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 
 ## Pages built (as of July 25, 2026 session)
 
-Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ.
+Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ, and **Teacher** (`/teacher`, behind `RequireTeacher` — the class list with Unlock and Reset PIN).
 
 Working against the database: login/logout, the first-time PIN change, route guards, the curriculum reads on Topic and Lesson, and **real lesson progress** — finishing a subtopic's last question writes a `progress` row, which drives the dashboard bar, the journey tree's node states, the Topic page's unlock chain, and the Progress page's per-topic bars.
 

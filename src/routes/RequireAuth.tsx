@@ -14,7 +14,7 @@ import { useAuth } from "@/context/auth";
  * Used as a layout route, so it wraps its children via <Outlet />.
  */
 export function RequireAuth({ allowPinChange = false }: { allowPinChange?: boolean }) {
-  const { status, student } = useAuth();
+  const { status, student, teacher } = useAuth();
   const location = useLocation();
 
   // Restoring a session from localStorage is async. Rendering the redirect
@@ -29,8 +29,17 @@ export function RequireAuth({ allowPinChange = false }: { allowPinChange?: boole
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  // Signed in, but no matching row in `students`. Shouldn't happen — the
-  // seeding script creates both together — but it would leave the student
+  // A teacher who typed a student URL, or followed a stale bookmark. Send them
+  // to their own half of the app rather than showing them the "Something's
+  // missing" screen below — which is what happened before teacher sessions
+  // existed, since a teacher has no `students` row and never will.
+  if (!student && teacher) {
+    return <Navigate to="/teacher" replace />;
+  }
+
+  // Signed in, but no matching row in `students` OR `teachers`. Shouldn't
+  // happen — both creation scripts write the profile alongside the auth user,
+  // and roll the auth user back if that fails — but it would leave someone
   // stuck on a blank screen with no explanation, so say something instead.
   if (!student) {
     return <AccountIncomplete />;
@@ -45,7 +54,8 @@ export function RequireAuth({ allowPinChange = false }: { allowPinChange?: boole
   return <Outlet />;
 }
 
-function AuthPending() {
+/** Exported so RequireTeacher shows the identical gap-filler. */
+export function AuthPending() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
