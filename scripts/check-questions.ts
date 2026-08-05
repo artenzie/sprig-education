@@ -84,6 +84,8 @@ const REVIEWED: Record<string, string> = {
     'Says "Same scenario" but restates every figure it needs (£25, A £12, D £18), so it stands alone.',
   "e7ce01d5-e9ca-471b-8abc-4957428f73dd":
     'Matches on "below" only via the phrase "go below zero" — not a back-reference at all.',
+  "8689ed6b-b7dd-43c5-b8fe-cda1769b2648":
+    'Legitimate digit-free NUM question ("What inflation rate ... does the UK government set as the Bank of England\'s target?", answer 2) — same class as "How many days are in a week?" from the rule\'s own doc comment. Fully self-contained; just has no digit in the question text.',
 };
 
 type Severity = "error" | "warn";
