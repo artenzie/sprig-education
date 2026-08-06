@@ -236,20 +236,24 @@ function ProgressPage() {
               </div>
 
               <div className="mt-8 flex items-center gap-5">
-                {/* Permanently disabled until the Progress Check flow exists.
-                    Left visible rather than deleted because the selection UI
-                    above is the real design for it. */}
-                <button
-                  disabled
-                  title="Progress Checks aren't built yet"
-                  className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-muted px-6 py-3 text-[13.5px] font-medium text-muted-foreground"
-                >
-                  Start Progress Check
-                  <ArrowUpRight className="h-4 w-4" />
-                </button>
-                <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
-                  Coming soon
-                </span>
+                {selected.length > 0 ? (
+                  <Link
+                    to={`/test?${new URLSearchParams({ type: "progress_check", topics: selected.join(",") })}`}
+                    className="inline-flex items-center gap-2 rounded-full bg-forest px-6 py-3 text-[13.5px] font-medium text-primary-foreground shadow-[0_10px_30px_-14px_color-mix(in_oklab,var(--forest)_70%,transparent)] transition-transform hover:-translate-y-0.5"
+                  >
+                    Start Progress Check
+                    <ArrowUpRight className="h-4 w-4" />
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    title="Pick at least one topic above to start"
+                    className="inline-flex cursor-not-allowed items-center gap-2 rounded-full bg-muted px-6 py-3 text-[13.5px] font-medium text-muted-foreground"
+                  >
+                    Start Progress Check
+                    <ArrowUpRight className="h-4 w-4" />
+                  </button>
+                )}
               </div>
             </div>
           </div>

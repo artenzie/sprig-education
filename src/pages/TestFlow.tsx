@@ -82,16 +82,27 @@ function toTestQuestion(row: PoolRow): TestQuestion | null {
 /* ---------- Test type ---------- */
 
 /**
- * Only two of the three test types can be launched here so far. An unknown or
- * missing `?type=` falls back to a growth check rather than erroring: the
- * worst case is a student takes a slightly mislabelled test, which is better
- * than a dead end.
+ * An unknown or missing `?type=` falls back to a growth check rather than
+ * erroring: the worst case is a student takes a slightly mislabelled test,
+ * which is better than a dead end.
  *
- * `progress_check` is deliberately absent. It needs a topic filter on the pool
- * query, and the Progress page's topic-picker isn't wired to anything yet.
+ * `progress_check` additionally needs a `?topics=` param (comma-separated
+ * topic ids) -- see the pool-filtering step in the data-fetching effect below.
  */
 function readTestType(raw: string | null): TestType {
-  return raw === "baseline" ? "baseline" : "growth_check";
+  if (raw === "baseline") return "baseline";
+  if (raw === "progress_check") return "progress_check";
+  return "growth_check";
+}
+
+/** Parses `?topics=id1,id2` into a set. Empty/missing param yields an empty set. */
+function readSelectedTopicIds(raw: string | null): Set<string> {
+  return new Set(
+    (raw ?? "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
 }
 
 const TEST_LABEL: Record<TestType, string> = {
@@ -107,6 +118,7 @@ type Phase = "intro" | "questions" | "saving" | "results";
 function TestFlow() {
   const [searchParams] = useSearchParams();
   const testType = readTestType(searchParams.get("type"));
+  const selectedTopicIds = readSelectedTopicIds(searchParams.get("topics"));
   const { student } = useAuth();
 
   const [questions, setQuestions] = useState<TestQuestion[] | null>(null);
@@ -122,35 +134,65 @@ function TestFlow() {
     // mid-flight.
     let cancelled = false;
 
-    supabase
-      .from("questions")
-      .select(POOL_SELECT)
-      .then(({ data, error }) => {
-        if (cancelled) return;
-        if (error) {
-          setLoadError(error.message);
-          return;
-        }
+    // A Progress Check with nothing selected is a routing error (stale
+    // bookmark, hand-edited URL) -- the "Start" button on /progress is
+    // disabled until at least one topic is picked, so this isn't reachable
+    // through normal use. Caught here rather than falling through to the
+    // generic small-pool message below, which would read as a bank problem.
+    if (testType === "progress_check" && selectedTopicIds.size === 0) {
+      setLoadError("Pick at least one topic on your progress page, then start again.");
+      return;
+    }
 
-        const pool = ((data ?? []) as unknown as PoolRow[])
-          .map(toTestQuestion)
-          .filter((q): q is TestQuestion => q !== null);
+    Promise.all([
+      supabase.from("questions").select(POOL_SELECT),
+      // Only a Progress Check needs to know which subtopics are done; the
+      // other two test types sample the whole bank regardless of progress.
+      testType === "progress_check"
+        ? supabase.from("progress").select("subtopic_id").eq("status", "complete")
+        : Promise.resolve({ data: [] as { subtopic_id: string }[], error: null }),
+    ]).then(([poolResult, progressResult]) => {
+      if (cancelled) return;
+      if (poolResult.error) {
+        setLoadError(poolResult.error.message);
+        return;
+      }
+      if (progressResult.error) {
+        setLoadError(progressResult.error.message);
+        return;
+      }
 
-        if (pool.length < MIN_TEST_QUESTIONS) {
-          setLoadError(
-            "There isn't enough content in the question bank yet to build a test.",
-          );
-          return;
-        }
+      let pool = ((poolResult.data ?? []) as unknown as PoolRow[])
+        .map(toTestQuestion)
+        .filter((q): q is TestQuestion => q !== null);
 
-        setQuestions(selectTestQuestions(pool, TEST_QUESTION_COUNT));
-      });
+      if (testType === "progress_check") {
+        const completedSubtopicIds = new Set(
+          (progressResult.data ?? []).map((r) => r.subtopic_id),
+        );
+        pool = pool.filter(
+          (q) => selectedTopicIds.has(q.topicId) && completedSubtopicIds.has(q.subtopicId),
+        );
+      }
+
+      if (pool.length < MIN_TEST_QUESTIONS) {
+        setLoadError(
+          testType === "progress_check"
+            ? "There aren't enough questions yet in the topics you picked. Try selecting one or two more topics you've finished, or finish more of the ones you chose."
+            : "There isn't enough content in the question bank yet to build a test.",
+        );
+        return;
+      }
+
+      setQuestions(selectTestQuestions(pool, TEST_QUESTION_COUNT));
+    });
 
     return () => {
       cancelled = true;
     };
-    // The pool is the same for every test type, so this runs once. Re-selecting
-    // on every render would reshuffle the test underneath the student.
+    // The pool (and, for a Progress Check, the topic selection) is fixed for
+    // the life of this page, so this runs once. Re-selecting on every render
+    // would reshuffle the test underneath the student.
   }, []);
 
   const total = questions?.length ?? 0;
@@ -306,6 +348,7 @@ function IntroScreen({
   onStart: () => void;
 }) {
   const isBaseline = testType === "baseline";
+  const isProgressCheck = testType === "progress_check";
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-10 text-center text-foreground">
       <Leaf className="h-8 w-8 text-forest" strokeWidth={1.4} />
@@ -319,6 +362,10 @@ function IntroScreen({
           <>
             Let's find your <em className="italic text-forest">starting point</em>.
           </>
+        ) : isProgressCheck ? (
+          <>
+            See where you stand on what you've <em className="italic text-forest">already finished</em>.
+          </>
         ) : (
           <>
             See how far you've <em className="italic text-forest">grown</em>.
@@ -329,7 +376,9 @@ function IntroScreen({
       <p className="mt-6 max-w-lg text-[15.5px] leading-[1.75] text-muted-foreground">
         {isBaseline
           ? "A mix of questions from across everything Sprig covers — including plenty you haven't been taught yet. That's the point: it marks where you're starting from, so you can see how far you move."
-          : "A mix of questions from across everything Sprig covers, so you can compare this with your baseline and every check since."}
+          : isProgressCheck
+            ? "Only questions from the topics you picked, and only what you've already completed. Nothing you haven't been taught yet — this checks retention, not readiness."
+            : "A mix of questions from across everything Sprig covers, so you can compare this with your baseline and every check since."}
       </p>
 
       <div className="mt-10 max-w-md rounded-2xl border border-border bg-card/40 px-7 py-6 text-left">
