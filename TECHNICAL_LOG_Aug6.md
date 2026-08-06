@@ -289,3 +289,158 @@ end of the test they just took — the persistent, query-back-later version
 (`test_attempts.answers` joined back to `questions` weeks later) is still
 the same honest gap noted in `Progress.tsx`'s own header comment, unrelated
 to today's work.
+
+---
+---
+
+# Second session — wiring up the weekly check-in
+
+`weekly_checkins` had existed since the initial schema — `student_id`,
+`week`, `confidence`, `completion`, `confused_by`, `liked_most`, RLS already
+granting insert/update/select to the owning student — but nothing wrote to
+it and there was no UI. Same shape as the first session: the table was never
+the missing piece.
+
+---
+
+## 1. A banner in an already-reserved slot, not a fourth competing popup
+
+`Dashboard.tsx` already has a "How did today go?" mood popup (`CheckInModal`)
+in the header, and it already has a comment reading
+`{/* Right column: reserved for future journey visualization */}` sitting
+above the journey tree, doing nothing. Rather than adding a second pill next
+to the first one, or auto-opening a modal on every load, the weekly check-in
+is a small dismissible-by-ignoring banner card that fills exactly that
+reserved slot, and only renders when the week's check-in is missing:
+
+```tsx
+{dueThisWeek && !weeklyLoading && (
+  <div className="mb-8 flex items-center justify-between gap-6 rounded-2xl border border-border bg-card/40 px-6 py-5">
+    {/* eyebrow, one line of copy, "Take a minute" -> opens WeeklyCheckInModal */}
+  </div>
+)}
+```
+
+**The general lesson:** a UI comment that says "reserved for future X" is
+worth checking before adding a new location for X — the layout may already
+have budgeted the space.
+
+---
+
+## 2. "Due this week" reuses the schema's own unit instead of inventing one
+
+The obvious way to decide "has it been a week" is to store
+`last_checkin_at` and compare `Date.now() - lastCheckinAt > 7 days`. That
+column doesn't exist, and building it would duplicate something the schema
+already expresses: `weekly_checkins.week` is documented as "start date of
+the week" and is literally half of the table's primary key
+(`primary key (student_id, week)`). One row *is* one calendar week's
+check-in. So "due" is just: does a row exist for *this* week's Monday?
+
+```ts
+// src/lib/week.ts
+export function currentWeekStart(date: Date = new Date()): string {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay(); // 0 (Sun) .. 6 (Sat)
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  // built from local getFullYear/getMonth/getDate, not toISOString() —
+  // toISOString() converts to UTC first, which shifts the date near midnight
+  // for any student west of UTC
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+```
+
+No date library exists anywhere in the repo, and this is small enough not to
+add one for. The hook that uses it (`useWeeklyCheckin.ts`) mirrors
+`useJourney.ts`'s shape exactly: a cancellation-guarded effect that queries
+with no `.eq("student_id", ...)`, because the RLS policy already restricts
+`weekly_checkins` to `auth.uid() = student_id` — same reasoning already
+documented inline in `useJourney.ts` for the `progress` query, copied rather
+than re-derived.
+
+**The general lesson:** before adding a field or a calculation to track
+"when did X last happen", check whether an existing column already encodes
+the period you actually care about. Here the primary key did the tracking
+for free.
+
+---
+
+## 3. Upsert without `ignoreDuplicates` — the opposite choice from `markSubtopicComplete`, on purpose
+
+`markSubtopicComplete` upserts with `{ onConflict: "student_id,subtopic_id", ignoreDuplicates: true }`,
+because redoing a finished lesson should never overwrite the original
+`completed_at`. The weekly check-in write looks almost identical but drops
+that flag:
+
+```ts
+await supabase.from("weekly_checkins").upsert(
+  { student_id, week: currentWeekStart(), confidence, completion, confused_by, liked_most },
+  { onConflict: "student_id,week" },
+);
+```
+
+The two features look alike (`upsert` + composite key) but the correct
+behavior on a second write is opposite: a lesson's first completion date is
+worth preserving; a mid-week resubmission of *this week's* check-in should
+win, not silently no-op. RLS grants both `insert` and `update` on this table
+specifically, which is the schema confirming the same intent.
+
+**The general lesson:** two upserts that share a shape can still need
+opposite conflict behavior — the decision has to come from what a second
+write *means* for that specific data, not from matching the nearest existing
+pattern by default.
+
+---
+
+## 4. Verifying against a real account, and the guardrail that caught the write
+
+Same discipline as the 30 July and this morning's sessions: the banner
+rendering and the type-check passing don't confirm the row actually lands
+correctly shaped. A throwaway student ("Hopeful Lapwing") was created via
+`create-students.ts`, driven through the real login → set-PIN → dashboard
+flow in a real browser, the check-in form submitted with real field values,
+and the resulting row queried back directly:
+
+```json
+{
+  "week": "2026-08-03",
+  "confidence": 4,
+  "completion": 2,
+  "confused_by": "Compound interest formulas",
+  "liked_most": "The budgeting video"
+}
+```
+
+`week` landed on the correct Monday, `completion: 2` matched "Yes, all" (the
+`0 / 1 / 2` mapping baked into the UI's button order), and a full page
+reload afterward confirmed the banner stayed gone — proof the due-check
+reads its own write back correctly, not just that the insert succeeded.
+
+Worth recording because it was new this session: creating the throwaway
+account was blocked on the first attempt by the coding agent's own
+auto-mode classifier, since it's a live write against the connected
+Supabase project. It surfaced as a question rather than silently skipping
+or silently proceeding — the account was created only after an explicit
+yes. Same spirit as every other real-data write in this project's sessions:
+scoped to exactly one throwaway student, and fully undone afterward —
+`weekly_checkins` row, `students` row, and the `auth.users` row all deleted
+by student id, unlike Earnest Otter's PIN change earlier today, which was
+legitimate account state and stayed.
+
+**The general lesson:** a tool that pauses on a real write against a live
+project — even your own, even for testing — is doing its job. The right
+response is to answer the question, not route around it.
+
+---
+
+## What was verified (second session)
+
+| Check | Result |
+|---|---|
+| `tsc --noEmit` | ✅ clean |
+| `oxlint` on the new/changed files | ✅ clean |
+| Banner appears when no row exists for the current week | ✅ |
+| Modal submit writes a row with the correct Monday, mapped `completion` int, trimmed-or-null optional text | ✅ |
+| Banner disappears immediately after submit, and stays gone after a full reload | ✅ |
+| Throwaway test account and its check-in row | ✅ fully deleted after verification |

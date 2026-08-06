@@ -4,14 +4,18 @@ import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 
 import { CheckInModal } from "@/components/sprig/CheckInModal";
+import { WeeklyCheckInModal } from "@/components/sprig/WeeklyCheckInModal";
 import { JourneyTree } from "@/components/sprig/JourneyTree";
 import { useJourney } from "@/hooks/useJourney";
+import { useWeeklyCheckin } from "@/hooks/useWeeklyCheckin";
 import { TIER_NAME, toRoman } from "@/lib/journey";
 
 function Dashboard() {
   const [checkInOpen, setCheckInOpen] = useState(false);
+  const [weeklyCheckInOpen, setWeeklyCheckInOpen] = useState(false);
   const navigate = useNavigate();
   const { journey, loading } = useJourney();
+  const { dueThisWeek, loading: weeklyLoading, submit: submitWeeklyCheckin } = useWeeklyCheckin();
 
   const { percentComplete, currentTopic, nextUp } = journey;
 
@@ -129,8 +133,26 @@ function Dashboard() {
           </div>
         </aside>
 
-        {/* Right column: reserved for future journey visualization */}
         <section className="col-span-12 lg:col-span-8">
+          {dueThisWeek && !weeklyLoading && (
+            <div className="mb-8 flex items-center justify-between gap-6 rounded-2xl border border-border bg-card/40 px-6 py-5">
+              <div>
+                <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+                  Weekly check-in
+                </div>
+                <p className="mt-2 text-[14.5px] text-foreground/90">
+                  Two minutes on how this week went — it helps shape what comes next.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWeeklyCheckInOpen(true)}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-[13px] font-medium text-primary-foreground transition-transform hover:-translate-y-0.5"
+              >
+                Take a minute
+              </button>
+            </div>
+          )}
           <JourneyTree journey={journey} />
         </section>
       </main>
@@ -143,6 +165,11 @@ function Dashboard() {
       </footer>
 
       <CheckInModal open={checkInOpen} onClose={() => setCheckInOpen(false)} />
+      <WeeklyCheckInModal
+        open={weeklyCheckInOpen}
+        onClose={() => setWeeklyCheckInOpen(false)}
+        onSubmit={submitWeeklyCheckin}
+      />
     </div>
   );
 }
