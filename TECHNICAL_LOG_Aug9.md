@@ -313,3 +313,212 @@ handed it a realistic amount of data.
 | `npx tsc --noEmit` across the whole project | ✅ clean |
 | `npm run lint` (oxlint) | ✅ clean on all changed files (one pre-existing, unrelated warning in `TestFlow.tsx`) |
 | `npm run build` (full production build) | ✅ succeeds |
+
+---
+
+# Part two — topic mastery bars and missed questions
+
+Second, separate piece of work on the same day: `/progress`'s own header
+comment named three things it used to fake — Growth Check scores, per-topic
+"mastery," and missed questions. The Growth Check chart went real weeks ago.
+Today filled in the last two, both of which turned out to be the same
+underlying gap: `test_attempts` already stored everything needed, and nobody
+had written the query.
+
+---
+
+## 7. Two tables, two meanings, kept visibly separate
+
+`progress` says a subtopic was *finished* — one row, no score. The
+"Progress by topic" bars on this page have plotted that since the last
+session that touched it, deliberately labelled as completion rather than
+mastery — the page's own header comment says why: relabelling completion as
+mastery "would have made the page look finished while showing a number that
+does not mean what it says." That panel still drives the Progress Check
+topic-picker and was left untouched today.
+
+Real mastery — how a student actually *performed* — can only come from
+`test_attempts`, and only from tests, not lessons: `Lesson.tsx` writes a
+`progress` completion row and nothing else, so an individual lesson
+question's right/wrong answer leaves no trace anywhere to compute from. That
+rules out one tempting shortcut (blend in lesson-question performance) before
+it gets built — there's nothing there to blend in.
+
+## 8. The data was already shaped for this, one column over
+
+`test_attempts.questions_shown` and `test_attempts.answers` are parallel
+arrays already written by `saveTestAttempt()` (see `src/lib/testAttempts.ts`,
+built in an earlier session):
+
+```
+questions_shown: [{ question_id, topic_id, subtopic_id }, ...]
+answers:         [{ question_id, outcome, response }, ...]
+```
+
+The useful thing here is that `topic_id` is denormalised straight onto the
+attempt at write time. Building "mastery per topic" needs zero joins back
+through `subtopics → topics` — every answer already carries its own topic id.
+The only genuinely new query today was the reverse direction: given a
+*missed* question's id, fetch its display text back out of `questions` (for
+the card UI) — and even that turned out to need no new RLS, since
+`questions` has granted public `select` to `authenticated` since 24 July.
+
+## 9. "Latest wins," not "lifetime average" — and why that's the right call
+
+A student can retake a Progress Check specifically to fix a topic they got
+wrong before. If mastery averaged in every historical attempt, a topic
+they've since nailed would stay dragged down by one bad attempt from weeks
+ago — the exact opposite of what "where you stand *right now*" should mean.
+
+`src/lib/testMastery.ts` handles this with one pass over attempts, oldest to
+newest, overwriting a `Map` keyed by `question_id`:
+
+```ts
+export function latestOutcomes(attempts: readonly TestAttemptRow[]): Map<string, LatestOutcome> {
+  const latest = new Map<string, LatestOutcome>();
+  for (const attempt of attempts) {
+    const outcomeById = new Map((attempt.answers ?? []).map((a) => [a.question_id, a.outcome]));
+    for (const q of attempt.questions_shown ?? []) {
+      const outcome = outcomeById.get(q.question_id);
+      if (!outcome) continue;
+      latest.set(q.question_id, { questionId: q.question_id, topicId: q.topic_id, /* ... */ outcome, testType: attempt.test_type });
+    }
+  }
+  return latest;
+}
+```
+
+Because `fetchTestAttempts()` already returns attempts oldest-first, the last
+`.set()` for a given question id is always its most recent occurrence — no
+sorting or date comparison needed, just iteration order doing the work.
+Mastery per topic is then `correct / (correct + incorrect + unsure)` among
+each topic's latest-per-question outcomes, unsure sitting in the denominator
+for the same reason `scoreAttempt()` already puts it there: "not sure yet" is
+not mastered, but it must never score worse than a wrong guess would have.
+
+**One judgment call worth naming.** The Growth Check line chart deliberately
+excludes Progress Checks (`toGrowthPoints` in `Progress.tsx`), because a
+self-chosen topic subset isn't comparable to a whole-curriculum baseline —
+that's about the *overall* trend line, where sample size and coverage have to
+match to mean anything. Mastery-per-topic doesn't have that problem: it's
+already scoped to one topic, and a Progress Check is precisely the tool a
+student uses to move that topic's number. Excluding it here would make the
+bar for a topic they just drilled refuse to move — so, unlike the growth
+chart, Progress Checks count fully toward mastery.
+
+**The general lesson:** the same exclusion rule can be right in one place and
+wrong in another for the same underlying reason (comparability) applied to
+two different questions (a single trend line vs. a per-topic snapshot). Don't
+copy a filtering decision across features just because the data source is the
+same table — re-derive it from what the number is actually claiming to show.
+
+## 10. Finishing UI that was built once and waiting
+
+The missed-question card UI already existed, fully built, in
+`src/components/sprig/growth-check-parked.tsx` — `MissedCard`, `Legend`,
+`MissedCardView` — parked since an earlier session because the join from a
+stored answer back to displayable question text had never been written. That
+join is exactly `mapQuestion()` and `describeCorrectAnswer()` from
+`src/lib/questions.ts`, the same two functions `TestFlow.tsx`'s own
+end-of-test results screen already uses to show a student what they missed
+*in the moment*. Today's `fetchQuestionsByIds()` addition to that file is
+the only new code needed — it fetches the raw `questions` rows for whichever
+ids are currently unresolved, and the existing grading logic takes over from
+there. Nothing about how a question is displayed or graded was reinvented;
+only the "get it back out of storage weeks later" step was missing.
+
+`growth-check-parked.tsx`'s own header comment (which described everything
+in the file as "not yet reachable") is now stale in the same way the page's
+was — updated today to say plainly that the components are imported straight
+into `Progress.tsx`, rather than leaving a comment that actively
+contradicts what the file now does.
+
+## 11. Verifying without re-driving 36 test questions through the UI
+
+The natural instinct — take a real baseline through `TestFlow.tsx`, then a
+real Progress Check retake, all by clicking through the actual 18-question
+flow twice — would prove the *writer* (`saveTestAttempt`) as well as the new
+reader/derivation code. But the writer isn't new; it was built and verified
+in an earlier session, and re-proving it here would mostly be spending
+browser-automation time on code this session didn't touch.
+
+What *is* new is `testMastery.ts` and the Progress page's rendering of it,
+and what actually needs proving is that those work correctly against real
+rows, read by a real signed-in student session under real RLS. So today's
+setup skipped the click-through and went straight to the row shape
+`saveTestAttempt()` itself would have written, via a scratch service-role
+script (`scripts/_scratch-seed-mastery.ts`, deleted afterward, never
+committed) — real question ids pulled live from the database, not invented
+ones, so `mapQuestion()`/`describeCorrectAnswer()` had genuine content to
+render:
+
+```
+Attempt 1 (baseline):   a1✓ a2✗ a3? (Budgeting Basics) · b1✓ b2✗ (Buy Now, Pay Later) · c1✓ (Compound Interest)
+Attempt 2 (progress_check, later): a2✓ a3✓ only — b2 untouched
+```
+
+Two throwaway students: Amber Shrew got both attempts above; Gentle Squirrel
+got nothing, for the zero-attempts empty state.
+
+**Signed in as Amber Shrew for real** (nickname/PIN login, forced PIN change,
+the actual `RequireAuth` flow — not a service-role bypass) and loaded
+`/progress`. Every number matched the hand-worked prediction exactly:
+
+| Topic | Predicted | Shown |
+|---|---|---|
+| Budgeting Basics | 100% (a1, a2, a3 all correct as of latest) | 100% |
+| Buy Now, Pay Later | 50% (b1 correct, b2 still wrong) | 50% |
+| Compound Interest, Intuitively | 100% | 100% |
+| Missed questions | only b2, source "Growth" (its latest sighting was the baseline attempt) | exactly that — one card, correct answer "False", right topic label |
+
+That last row is the actual proof of "latest wins, per question, not per
+attempt": a2 and a3 correctly vanished from the missed list (fixed in the
+*second* attempt), while b2 — never retested — correctly stayed, and correctly
+kept the source badge from the attempt it was *actually* last seen in
+(`baseline` → "Growth"), not from whichever attempt happened to be most
+recent overall (`progress_check`). A bug that blended those two ideas — "most
+recent attempt at this student" instead of "most recent attempt *at this
+question*" — would have passed a shallower check and failed exactly this one.
+
+**Empty states.** Gentle Squirrel (zero attempts) showed "No tests taken
+yet" and "Nothing to revisit yet" — the *first-time* copy. Then one
+additional all-correct attempt was seeded for the same student to check the
+other empty branch: "Nothing to revisit" with no "yet" and no Legend, the
+distinct copy for "you've tested things and currently have nothing wrong,"
+which is a good outcome and reads as one rather than looking like a stalled
+loading state.
+
+**Regression check.** The Growth Check chart still plotted only the baseline
+point (50%) — the `progress_check` retake correctly stayed off that line,
+confirming the two different inclusion rules from section 9 aren't
+accidentally sharing a filter. No console errors on load in either session.
+
+**Cleanup.** `test_attempts` rows deleted before the student accounts (same
+FK-order lesson as section 6: `test_attempts.student_id` has no `ON DELETE
+CASCADE`), then both throwaway auth users deleted (cascading their `students`
+rows), confirmed empty by re-query. Scratch script and the auto-generated
+CSV handout both deleted, neither committed.
+
+**The general lesson:** proving new code doesn't always mean re-driving the
+entire user journey that produces its input — when the writer is
+already-verified, unchanged code, seeding its exact output shape and testing
+from there against a real, RLS-scoped read session proves what's actually new
+without spending the session's time re-confirming what already worked.
+
+---
+
+## What was verified (part two)
+
+| Check | Result |
+|---|---|
+| Mastery percentages, hand-computed against seeded attempts vs. shown on the real page | ✅ 100% / 50% / 100%, exact |
+| "Latest wins" is per-question, not per-attempt (retested questions move, untouched ones don't, source badge reflects the question's own latest sighting) | ✅ confirmed — see section 11 table |
+| Missed-question cards: correct topic label, correct answer text, explanation, source badge | ✅ all correct, real question content via `mapQuestion()`/`describeCorrectAnswer()` |
+| Progress Check attempts count toward mastery, unlike the growth chart | ✅ topic A moved from a Progress Check retake; growth chart still shows only the baseline point |
+| Empty state: zero attempts ever ("No tests taken yet" / "...yet") | ✅ |
+| Empty state: attempts exist, nothing currently missed (distinct positive copy, no Legend) | ✅ |
+| Completion bars ("Your topics") and mastery bars proven independent (zero lesson completions, real test data) | ✅ completion panel stayed empty while mastery bars were fully populated |
+| No RLS/migration changes needed — confirmed by reading existing grants rather than assuming | ✅ `questions` already grants public select to `authenticated` |
+| Regression: student login flow (nickname/PIN, forced change), Growth Check chart, no console errors | ✅ |
+| Throwaway students and all seeded `test_attempts` rows fully removed afterward, confirmed by re-query | ✅ |
+| `npx tsc -b`, `npx oxlint`, `npm run build` | ✅ all clean |
