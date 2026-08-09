@@ -28,7 +28,7 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 - `teachers.id` **is** `auth.users.id`, exactly as for students, so every teacher rule is `auth.uid() = teacher_id`.
 - **There is no signup.** New-user signups are OFF project-wide, and the Login page's Teacher/Parent box is login-only by design. Accounts come from `node --env-file=.env scripts/create-teacher.ts <email> --school "..."`, which *generates* a 24-character password and prints it once. Run it **before** `create-students.ts --teacher <uuid>`.
 - A teacher sees only their own students (`students.teacher_id = them`), via one RLS policy. They can do exactly two things, through security-definer functions that check ownership in the database: **clear a lockout** and **reset a PIN** to a random 6 digits shown once, which also forces `must_change_pin` back to true, clears the lockout and kills live sessions. Every action is logged to `teacher_actions`, capped at 40/hour.
-- Teachers have **no** access to `progress`, `test_attempts` or the check-ins yet. Class progress is separate work and needs its own thinking about what an anonymous student's teacher should see.
+- A teacher can also read their class's `progress` — completions only, via a second RLS policy scoped the same way (`students.teacher_id = auth.uid()`, joined through). `test_attempts` and the check-ins are still off-limits: no score, answer, or mood is visible to a teacher yet.
 - `teacher_reset_pin()` writes a bcrypt hash straight into `auth.users` — the free-plan route. Its failure mode is silent (update succeeds, student still can't log in), so verify a reset by **actually signing in with the new PIN**, never by the function returning cleanly. The Edge Function upgrade path is noted in the migration.
 
 ## Design system
@@ -50,11 +50,11 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 
 ## Pages built (as of July 25, 2026 session)
 
-Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ, and **Teacher** (`/teacher`, behind `RequireTeacher` — the class list with Unlock and Reset PIN).
+Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ, and **Teacher** (`/teacher`, behind `RequireTeacher` — the roster with Unlock and Reset PIN, each student's tier/completion, and a class-wide per-topic completion chart reusing `TopicBars`).
 
 Working against the database: login/logout, the first-time PIN change, route guards, the curriculum reads on Topic and Lesson, and **real lesson progress** — finishing a subtopic's last question writes a `progress` row, which drives the dashboard bar, the journey tree's node states, the Topic page's unlock chain, and the Progress page's per-topic bars.
 
-How progress is stored: **only completions**. A row in `progress` means "this student finished this subtopic"; `locked` and `available` are derived on the client in `src/lib/journey.ts`, never written. Only Tier 1 has content, so tiers 2–4 stay locked — `deriveJourney()` guards against treating a topic with zero subtopics as complete.
+How progress is stored: **only completions**. A row in `progress` means "this student finished this subtopic"; `locked` and `available` are derived on the client in `src/lib/journey.ts`, never written. Tiers 1–3 have content now (Tier 4 doesn't yet, so it stays locked) — `deriveJourney()` guards against treating a topic with zero subtopics as complete.
 
 Still mock or absent: Certificate and Library. The Progress page shows real completion but its Growth Check chart and missed-questions sections are honest empty states — both need `test_attempts`, and no test flow exists yet. Streak and XP were removed rather than faked (`daily_checkins` has no writer; XP has no defined rule). Building Progress/Growth Checks is the next piece of work.
 

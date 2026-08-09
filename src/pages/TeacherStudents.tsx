@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/auth";
 import {
   fetchTeacherStudents,
@@ -6,17 +6,27 @@ import {
   unlockStudent,
   type TeacherStudent,
 } from "@/lib/teacherAuth";
+import {
+  fetchClassProgress,
+  classAverageCompletion,
+  classTopicCompletion,
+  type ClassProgressData,
+} from "@/lib/teacherProgress";
+import { deriveJourney, EMPTY_JOURNEY, toRoman, type Journey } from "@/lib/journey";
+import { TopicBars } from "@/components/sprig/TopicBars";
 
 /**
- * The teacher's class list, and the two things a teacher needs mid-lesson.
+ * The teacher's class list — read-only class progress, plus the two things a
+ * teacher needs mid-lesson.
  *
- * Scope is deliberately one screen. A student cannot get in for exactly two
- * reasons — they're locked out after five wrong PINs, or they've forgotten
- * their PIN entirely — and until now neither had a remedy that didn't involve
- * waiting fifteen minutes or losing the account. Everything else a teacher
- * might eventually want (class progress, adding students, moving them between
- * classes) is absent on purpose; this is the part that makes a lesson
- * salvageable.
+ * A student cannot get in for exactly two reasons — they're locked out after
+ * five wrong PINs, or they've forgotten their PIN entirely — and neither had
+ * a remedy that didn't involve waiting fifteen minutes or losing the account
+ * until the Unlock/Reset PIN tooling below was built. Class progress is the
+ * other half: what a teacher can see is deliberately narrow, matching the new
+ * RLS policy in 20260809000000_teacher_read_class_progress.sql — completions
+ * only, never a score or an answer. Adding students or moving them between
+ * classes is still absent on purpose; that stays out of scope.
  *
  * Note this page does NOT use <TopNav />. That component is student-shaped all
  * the way through — Journey, Growth, Library, Certificate, a student avatar, a
@@ -30,6 +40,10 @@ function TeacherStudents() {
   const [students, setStudents] = useState<TeacherStudent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const [classProgress, setClassProgress] = useState<ClassProgressData | null>(null);
+  const [progressError, setProgressError] = useState<string | null>(null);
+
   // Bumped to re-run the load — the same manual-reload idiom as useJourney.
   const [nonce, setNonce] = useState(0);
 
@@ -47,14 +61,28 @@ function TeacherStudents() {
     let cancelled = false;
     setLoading(true);
 
-    fetchTeacherStudents().then((result) => {
+    // Fired together, same as the roster/lockouts pair below: a broken class-
+    // progress read shouldn't stop the roster (and its Unlock/Reset PIN
+    // actions) from loading — it just leaves the progress section showing its
+    // own error instead.
+    Promise.all([fetchTeacherStudents(), fetchClassProgress()]).then(([rosterResult, progressResult]) => {
       if (cancelled) return;
-      if (result.ok) {
-        setStudents(result.students);
+
+      if (rosterResult.ok) {
+        setStudents(rosterResult.students);
         setError(null);
       } else {
-        setError(result.message);
+        setError(rosterResult.message);
       }
+
+      if (progressResult.ok) {
+        setClassProgress(progressResult.data);
+        setProgressError(null);
+      } else {
+        setClassProgress(null);
+        setProgressError(progressResult.message);
+      }
+
       setLoading(false);
     });
 
@@ -64,6 +92,24 @@ function TeacherStudents() {
   }, [nonce]);
 
   const reload = useCallback(() => setNonce((n) => n + 1), []);
+
+  // One Journey per student, built with the SAME deriveJourney() a student's
+  // own dashboard uses — no second copy of the tier/percent/unlock rules.
+  const journeyByStudentId = useMemo(() => {
+    const map = new Map<string, Journey>();
+    if (!classProgress) return map;
+    for (const student of students) {
+      map.set(
+        student.id,
+        deriveJourney(classProgress.topics, classProgress.progressByStudentId.get(student.id) ?? new Set()),
+      );
+    }
+    return map;
+  }, [students, classProgress]);
+
+  const journeys = useMemo(() => [...journeyByStudentId.values()], [journeyByStudentId]);
+  const topicCompletion = classProgress ? classTopicCompletion(classProgress.topics, journeys) : [];
+  const classAverage = classAverageCompletion(journeys);
 
   async function handleUnlock(student: TeacherStudent) {
     setBusyId(student.id);
@@ -144,7 +190,49 @@ function TeacherStudents() {
           read it, including us — so it gets replaced with a new one instead.
         </p>
 
-        <div className="mt-14 border border-border/70 bg-background/40">
+        {/* Class progress — completions only, never a score. See the RLS
+            policy note at the top of this file. */}
+        <div className="mt-16">
+          <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
+            <span>Class progress</span>
+            <span className="h-px w-8 bg-border" />
+            <span>
+              {loading || students.length === 0 ? "—" : `${classAverage}% average complete`}
+            </span>
+          </div>
+
+          <div className="mt-6 border border-border/70 bg-background/40 px-8 py-10">
+            {loading ? (
+              <p className="font-mono text-[10.5px] uppercase tracking-[0.24em] text-muted-foreground">
+                Loading class progress
+              </p>
+            ) : progressError ? (
+              <p role="alert" className="text-[13px] leading-[1.6] text-[color:var(--destructive)]">
+                {progressError}
+              </p>
+            ) : students.length === 0 ? (
+              <p className="text-[14.5px] leading-[1.7] text-muted-foreground">
+                No students yet — this fills in once your class has one.
+              </p>
+            ) : topicCompletion.length === 0 ? (
+              <p className="text-[14.5px] leading-[1.7] text-muted-foreground">
+                Nothing finished yet — this fills in as the class completes lessons.
+              </p>
+            ) : (
+              <TopicBars
+                items={topicCompletion}
+                ariaLabel="Percentage of the class that has completed each topic"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="mt-16 flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
+          <span>Roster</span>
+          <span className="h-px w-8 bg-border" />
+        </div>
+
+        <div className="mt-6 border border-border/70 bg-background/40">
           {loading ? (
             <p className="px-8 py-10 font-mono text-[10.5px] uppercase tracking-[0.24em] text-muted-foreground">
               Loading your class
@@ -169,6 +257,7 @@ function TeacherStudents() {
                 <StudentRow
                   key={student.id}
                   student={student}
+                  journey={journeyByStudentId.get(student.id) ?? EMPTY_JOURNEY}
                   busy={busyId === student.id}
                   disabled={busyId !== null && busyId !== student.id}
                   confirming={confirmingId === student.id}
@@ -194,6 +283,7 @@ function TeacherStudents() {
 
 function StudentRow({
   student,
+  journey,
   busy,
   disabled,
   confirming,
@@ -206,6 +296,7 @@ function StudentRow({
   onDismissPin,
 }: {
   student: TeacherStudent;
+  journey: Journey;
   busy: boolean;
   disabled: boolean;
   confirming: boolean;
@@ -234,6 +325,9 @@ function StudentRow({
             ) : (
               "—"
             )}
+          </p>
+          <p className="mt-1.5 text-[13px] leading-[1.6] text-muted-foreground">
+            {progressLabel(journey)}
           </p>
         </div>
 
@@ -302,6 +396,24 @@ function StudentRow({
       )}
     </li>
   );
+}
+
+/**
+ * "Tier I · Budgeting · 4/13", or a fallback for the two edges: nothing
+ * loaded yet (totalSubtopics === 0, indistinguishable from a genuinely empty
+ * curriculum — both read as "—"), and everything available finished, where
+ * currentTopic is null because tiers 2-4 have no content for deriveJourney()
+ * to call "current" yet — see the guard in src/lib/journey.ts.
+ */
+function progressLabel(journey: Journey): string {
+  if (journey.totalSubtopics === 0) return "—";
+  const fraction = `${journey.completedSubtopics}/${journey.totalSubtopics}`;
+  if (journey.currentTopic) {
+    return `Tier ${toRoman(journey.currentTopic.tier)} · ${journey.currentTopic.title} · ${fraction}`;
+  }
+  return journey.completedSubtopics === journey.totalSubtopics
+    ? `All available content finished · ${fraction}`
+    : `${fraction} complete`;
 }
 
 function RowButton({

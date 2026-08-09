@@ -3,10 +3,10 @@ import { useEffect, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 import { GrowthChart, type GrowthPoint } from "@/components/sprig/GrowthChart";
+import { TopicBars } from "@/components/sprig/TopicBars";
 import { useJourney } from "@/hooks/useJourney";
 import { useAuth } from "@/context/auth";
 import { fetchTestAttempts, type TestAttemptRow } from "@/lib/testAttempts";
-import type { JourneyTopic } from "@/lib/journey";
 
 /**
  * WHAT THIS PAGE CAN AND CANNOT SHOW YET
@@ -183,7 +183,17 @@ function ProgressPage() {
         <section>
           <div className="grid grid-cols-1 gap-12 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             {startedTopics.length > 0 ? (
-              <TopicBars topics={startedTopics} />
+              <TopicBars
+                items={startedTopics.map((t) => ({
+                  id: t.id,
+                  title: t.title,
+                  percent:
+                    t.subtopics.length === 0
+                      ? 0
+                      : Math.round((t.completedCount / t.subtopics.length) * 100),
+                }))}
+                ariaLabel="How much of each topic you've completed"
+              />
             ) : (
               <EmptyPanel
                 title="Nothing to show yet"
@@ -286,102 +296,6 @@ function ProgressPage() {
       </main>
     </div>
   );
-}
-
-/* ---------- Topic bars ---------- */
-
-/**
- * One bar per started topic, showing how much of it is finished.
- *
- * Note the axis label says "complete", not "mastery". The old version of this
- * chart plotted a `mastery` percentage that no query could produce. This plots
- * completedCount / subtopics.length, which is a real ratio of real rows.
- */
-function TopicBars({ topics }: { topics: JourneyTopic[] }) {
-  const W = 460;
-  const H = 340;
-  const padL = 12;
-  const padR = 12;
-  const padT = 20;
-  const padB = 64;
-  const innerW = W - padL - padR;
-  const innerH = H - padT - padB;
-  const gap = 18;
-  const barW = (innerW - gap * (topics.length - 1)) / topics.length;
-
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="w-full max-w-[520px]"
-      role="img"
-      aria-label="How much of each topic you've completed"
-    >
-      {/* baseline */}
-      <line
-        x1={padL}
-        x2={W - padR}
-        y1={padT + innerH}
-        y2={padT + innerH}
-        stroke="var(--border)"
-        strokeWidth={1}
-      />
-      {topics.map((t, i) => {
-        const total = t.subtopics.length;
-        const percent = total === 0 ? 0 : Math.round((t.completedCount / total) * 100);
-        const x = padL + i * (barW + gap);
-        const h = (percent / 100) * innerH;
-        const y = padT + innerH - h;
-        return (
-          <g key={t.id}>
-            <rect
-              x={x}
-              y={y}
-              width={barW}
-              height={Math.max(h, 2)}
-              rx={barW / 2}
-              ry={barW / 2}
-              fill="var(--forest)"
-              opacity={0.9}
-            />
-            <text
-              x={x + barW / 2}
-              y={y - 8}
-              textAnchor="middle"
-              style={{ fontFamily: "var(--font-display)", fontSize: 13, fill: "var(--forest)" }}
-            >
-              {percent}%
-            </text>
-            {/* label */}
-            <text
-              x={x + barW / 2}
-              y={padT + innerH + 20}
-              textAnchor="middle"
-              className="fill-muted-foreground"
-              style={{ fontFamily: "var(--font-sans)", fontSize: 10.5 }}
-            >
-              {shortLabel(t.title).line1}
-            </text>
-            <text
-              x={x + barW / 2}
-              y={padT + innerH + 34}
-              textAnchor="middle"
-              className="fill-muted-foreground"
-              style={{ fontFamily: "var(--font-sans)", fontSize: 10.5 }}
-            >
-              {shortLabel(t.title).line2}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-function shortLabel(label: string): { line1: string; line2: string } {
-  const words = label.split(" ");
-  if (words.length <= 2) return { line1: label, line2: "" };
-  const mid = Math.ceil(words.length / 2);
-  return { line1: words.slice(0, mid).join(" "), line2: words.slice(mid).join(" ") };
 }
 
 /* ---------- Empty states ---------- */
