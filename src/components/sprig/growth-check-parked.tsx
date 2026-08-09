@@ -1,32 +1,19 @@
 /**
- * PARKED UI — built, working, and not yet reachable.
+ * No longer parked — imported straight into src/pages/Progress.tsx.
  *
- * These components were live on the Progress page while it ran on invented
- * data. When that page was rewired to real progress they lost their data
- * source, because they need `test_attempts` and nothing wrote to that table.
+ * These components were built while the Progress page still ran on invented
+ * data, then lost their data source when that page was rewired to real
+ * completions, because they need `test_attempts` and nothing wrote to that
+ * table yet. The name and this file stuck around rather than being renamed,
+ * since it's still an accurate record of why the join was missing for as long
+ * as it was: the end-of-test results screen could show missed questions
+ * because it still held them in memory, but rebuilding that list weeks later
+ * meant taking the question ids out of `test_attempts.answers` and joining
+ * them back to `questions` — that's `src/lib/testMastery.ts` +
+ * `fetchQuestionsByIds()` in `src/lib/questions.ts` now.
  *
- * They are kept here rather than deleted because they are finished design
- * work, and rebuilding them from scratch later would be wasted effort. Git
- * history would have preserved them too, but only for someone who knew to go
- * looking; a file you can open is a much better reminder than a commit you
- * have to remember.
- *
- * THE GROWTH CHART HAS LEFT THIS FILE. The baseline and Growth Check flows now
- * write real attempts, so it moved to GrowthChart.tsx and is live on the
- * Progress page. What remains parked is the *historical* missed-questions
- * section, which is a harder problem than it looks: the end-of-test results
- * screen can show missed questions because it still holds them in memory, but
- * rebuilding that list weeks later means taking the question ids out of
- * `test_attempts.answers` and joining them back to `questions` for the text,
- * answer and explanation. That query isn't written yet.
- *
- * WHY EVERYTHING IS EXPORTED: `noUnusedLocals` is on, so an unexported
- * function nobody calls fails the build. Exporting is what lets finished-but-
- * unwired code sit in the repo without either breaking compilation or being
- * quietly deleted.
- *
- * TO BRING BACK: import into src/pages/Progress.tsx and feed MissedCardView one
- * MissedCard per wrong-or-unsure answer, sourced from the join described above.
+ * THE GROWTH CHART LEFT THIS FILE EARLIER. It moved to GrowthChart.tsx once
+ * the baseline/Growth Check flow started writing real attempts.
  */
 
 export type MissedCard = {

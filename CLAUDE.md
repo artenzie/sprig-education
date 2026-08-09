@@ -52,13 +52,13 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 
 Landing (root), Login, Set PIN, Dashboard (journey tree), Topic, Lesson flow, Progress/Tests, Certificate, Library, FAQ, and **Teacher** (`/teacher`, behind `RequireTeacher` — the roster with Unlock and Reset PIN, each student's tier/completion, and a class-wide per-topic completion chart reusing `TopicBars`).
 
-Working against the database: login/logout, the first-time PIN change, route guards, the curriculum reads on Topic and Lesson, and **real lesson progress** — finishing a subtopic's last question writes a `progress` row, which drives the dashboard bar, the journey tree's node states, the Topic page's unlock chain, and the Progress page's per-topic bars.
+Working against the database: login/logout, the first-time PIN change, route guards, the curriculum reads on Topic and Lesson, and **real lesson progress** — finishing a subtopic's last question writes a `progress` row, which drives the dashboard bar, the journey tree's node states, and the Topic page's unlock chain.
 
 How progress is stored: **only completions**. A row in `progress` means "this student finished this subtopic"; `locked` and `available` are derived on the client in `src/lib/journey.ts`, never written. Tiers 1–3 have content now (Tier 4 doesn't yet, so it stays locked) — `deriveJourney()` guards against treating a topic with zero subtopics as complete.
 
-Still mock or absent: Certificate and Library. The Progress page shows real completion but its Growth Check chart and missed-questions sections are honest empty states — both need `test_attempts`, and no test flow exists yet. Streak and XP were removed rather than faked (`daily_checkins` has no writer; XP has no defined rule). Building Progress/Growth Checks is the next piece of work.
+The Progress page draws on two tables that mean different things, and keeps them visibly separate rather than blending them into one "progress" number: `progress`-by-topic completion bars (did they finish it) feed the Progress Check topic-picker, and `test_attempts`-derived mastery bars + missed-question cards (how they actually did) live in `src/lib/testMastery.ts` — `latestOutcomes()` collapses a student's answer history into "as of their most recent attempt at each question," so mastery moves when a retake improves it rather than averaging in old attempts forever. The Growth Check line chart is real too, via `src/lib/testAttempts.ts` and `src/pages/TestFlow.tsx`, the baseline/Progress Check/Growth Check writer.
 
-The Growth Check UI itself already exists, parked and exported in `src/components/sprig/growth-check-parked.tsx` — a finished line chart and missed-question cards, waiting on data rather than on design.
+Still mock or absent: Certificate and Library. Streak and XP were removed rather than faked (`daily_checkins` has no writer; XP has no defined rule).
 
 ## Workflow preference
 

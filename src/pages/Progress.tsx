@@ -1,36 +1,41 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 import { GrowthChart, type GrowthPoint } from "@/components/sprig/GrowthChart";
 import { TopicBars } from "@/components/sprig/TopicBars";
+import { Legend, MissedCardView, type MissedCard } from "@/components/sprig/growth-check-parked";
 import { useJourney } from "@/hooks/useJourney";
 import { useAuth } from "@/context/auth";
 import { fetchTestAttempts, type TestAttemptRow } from "@/lib/testAttempts";
+import { latestOutcomes, missedQuestionIds, topicMastery } from "@/lib/testMastery";
+import { describeCorrectAnswer, fetchQuestionsByIds, mapQuestion, type DbQuestion } from "@/lib/questions";
 
 /**
- * WHAT THIS PAGE CAN AND CANNOT SHOW YET
+ * WHAT THIS PAGE SHOWS AND WHERE EACH NUMBER COMES FROM
  *
  * This page used to run entirely on invented data: seven weekly Growth Check
  * scores, five per-topic "mastery" percentages, and five missed questions with
- * written explanations. All of it was fabricated, and none of it can be
- * recovered from what the app actually stores.
+ * written explanations. All of it is real now, and the three sections below
+ * deliberately draw on two different tables that mean different things.
  *
- * Two of those three are now real. `progress` records THAT a subtopic was
- * finished -- one row, no score -- which is what the topic bars plot. Scores
- * belong to `test_attempts`, and the baseline / Growth Check flow at
- * src/pages/TestFlow.tsx finally writes to it, so the growth chart is live.
+ * `progress` records THAT a subtopic was finished -- one row, no score. The
+ * "Progress by topic" bars plot that: completion, not performance. The
+ * temptation was always to relabel completion as "mastery" and keep the bars
+ * looking full, which would have made the page look finished while showing a
+ * number that does not mean what it says.
  *
- * The temptation throughout was to relabel completion as "mastery" and keep
- * the bars looking full. That would have made the page look finished while
- * showing a number that does not mean what it says.
- *
- * STILL HONEST-EMPTY: the missed-questions section. Its UI is parked in
- * growth-check-parked.tsx, and the reason it is still parked is not design but
- * a missing query -- rebuilding a missed question weeks later means taking the
- * ids out of `test_attempts.answers` and joining them back to `questions`.
- * (The end-of-test results screen already shows missed questions, because at
- * that moment it still has them in memory.)
+ * Real mastery -- and the missed-questions review -- come from `test_attempts`
+ * instead, via src/lib/testMastery.ts. Its `answers` and `questions_shown`
+ * columns hold a per-question outcome and topic id for every baseline,
+ * Progress Check and Growth Check a student has taken; `latestOutcomes()`
+ * collapses that into "as of their most recent attempt at each question,"
+ * so a topic they've since drilled and improved doesn't stay dragged down by
+ * an old bad attempt. The missed-question cards reuse the UI parked in
+ * growth-check-parked.tsx and the same mapQuestion()/describeCorrectAnswer()
+ * TestFlow.tsx's results screen already uses -- rebuilding a question from
+ * weeks ago is the same join, just done later and from an id instead of
+ * from memory.
  */
 
 /* ---------- Page ---------- */
@@ -99,6 +104,65 @@ function ProgressPage() {
   // Growth Checks -- which is what finally gives the `baseline` value in the
   // test_type check constraint a writer.
   const isFirstTest = attemptsLoaded && attempts.length === 0;
+
+  // "As of your most recent attempt at each question." See testMastery.ts for
+  // why latest-wins rather than a lifetime average.
+  const latest = useMemo(() => latestOutcomes(attempts ?? []), [attempts]);
+  const masteryItems = useMemo(() => topicMastery(latest, journey.topics), [latest, journey.topics]);
+  const topicTitleById = useMemo(
+    () => new Map(journey.topics.map((t) => [t.id, t.title])),
+    [journey.topics],
+  );
+
+  // Joined into one string so the effect below re-fetches only when the
+  // *set* of missed ids actually changes, not on every render -- a fresh
+  // array from missedQuestionIds() would otherwise have a new identity each
+  // time even when its contents are unchanged.
+  const missedIdsKey = useMemo(() => [...missedQuestionIds(latest)].sort().join(","), [latest]);
+
+  // null means "not loaded yet", same convention as `attempts` above.
+  const [missedRows, setMissedRows] = useState<DbQuestion[] | null>(null);
+  const [missedError, setMissedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (missedIdsKey === "") {
+      setMissedRows([]);
+      return;
+    }
+
+    void fetchQuestionsByIds(missedIdsKey.split(",")).then((result) => {
+      if (cancelled) return;
+      if (result.ok) {
+        setMissedRows(result.questions);
+      } else {
+        setMissedError(result.message);
+        setMissedRows([]);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [missedIdsKey]);
+
+  const missedCards: MissedCard[] = missedRows
+    ? missedRows
+        .map((row) => {
+          const entry = latest.get(row.id);
+          const question = mapQuestion(row);
+          return {
+            id: row.id,
+            question: question.prompt,
+            answer: describeCorrectAnswer(question),
+            explanation: question.explanation,
+            source: entry?.testType === "progress_check" ? ("progress" as const) : ("growth" as const),
+            topic: (entry && topicTitleById.get(entry.topicId)) ?? "—",
+          };
+        })
+        .sort((a, b) => a.topic.localeCompare(b.topic) || a.question.localeCompare(b.question))
+    : [];
 
   // Only topics with content the student has actually started or finished --
   // there is nothing to revisit in a topic they have never opened.
@@ -271,26 +335,73 @@ function ProgressPage() {
 
         <Divider />
 
-        {/* SECTION 3 — Missed questions */}
+        {/* SECTION 3 — Test performance: mastery bars, then missed questions */}
         <section>
           <div className="flex items-end justify-between gap-8">
             <div className="max-w-xl">
               <h2 className="font-display text-[34px] font-normal leading-[1.1] tracking-[-0.02em]">
-                Worth another <em className="italic text-forest">look</em>.
+                Where you <em className="italic text-forest">stand</em>.
               </h2>
               <p className="mt-3 text-[15px] leading-[1.7] text-muted-foreground">
-                Questions you've gotten wrong across your Progress and Growth Checks.
-                No score, no pressure — just a chance to loop back over the ideas that
-                didn't quite land yet.
+                How you've actually done on tests, topic by topic — based on your most
+                recent attempt at each question, so retaking a Progress Check moves
+                these numbers.
               </p>
             </div>
           </div>
 
           <div className="mt-10">
-            <EmptyPanel
-              title="Nothing to revisit yet"
-              body="Questions you miss on a Progress or Growth Check will collect here, with the answer and why it works."
-            />
+            {!attemptsLoaded ? (
+              <EmptyPanel title="Loading…" body="Fetching your test results." />
+            ) : masteryItems.length > 0 ? (
+              <TopicBars items={masteryItems} ariaLabel="Your mastery by topic" />
+            ) : (
+              <EmptyPanel
+                title="No tests taken yet"
+                body="Take a baseline or a Progress Check and this fills in with how you did, topic by topic."
+              />
+            )}
+          </div>
+
+          <div className="mt-16 flex items-end justify-between gap-8">
+            <div className="max-w-xl">
+              <h3 className="font-display text-[26px] font-normal leading-[1.15] tracking-[-0.01em]">
+                Worth another <em className="italic text-forest">look</em>.
+              </h3>
+              <p className="mt-3 text-[15px] leading-[1.7] text-muted-foreground">
+                Questions you're currently getting wrong or marking unsure. No score,
+                no pressure — get one right on a later attempt and it drops off this
+                list.
+              </p>
+            </div>
+            {missedCards.length > 0 && <Legend />}
+          </div>
+
+          <div className="mt-10">
+            {missedError ? (
+              <EmptyPanel
+                title="Couldn't load these"
+                body={`Your results are safe — we just couldn't fetch the questions just now. ${missedError}`}
+              />
+            ) : missedRows === null ? (
+              <EmptyPanel title="Loading…" body="Fetching your missed questions." />
+            ) : missedCards.length > 0 ? (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+                {missedCards.map((card) => (
+                  <MissedCardView key={card.id} card={card} />
+                ))}
+              </div>
+            ) : attemptsLoaded && attempts.length > 0 ? (
+              <EmptyPanel
+                title="Nothing to revisit"
+                body="Every question you've been tested on, you're currently getting right."
+              />
+            ) : (
+              <EmptyPanel
+                title="Nothing to revisit yet"
+                body="Questions you miss on a Progress or Growth Check will collect here, with the answer and why it works."
+              />
+            )}
           </div>
         </section>
       </main>

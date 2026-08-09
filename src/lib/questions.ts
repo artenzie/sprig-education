@@ -14,6 +14,7 @@
  * in `accepted_answers`.
  */
 
+import { supabase } from "@/lib/supabase";
 import type { Question } from "@/components/sprig/QuestionCard";
 
 /** A `questions` row, as the columns the app actually reads. */
@@ -85,4 +86,27 @@ export function describeCorrectAnswer(question: Question): string {
     return String(question.correctValue);
   }
   return question.acceptedAnswers[0] ?? "—";
+}
+
+/**
+ * Look up question rows by id — for rebuilding a missed-question card weeks
+ * after the attempt, from ids stored in `test_attempts.answers`.
+ *
+ * `questions` grants public select to `authenticated`
+ * (20260724020000_grant_public_content_read.sql), so this needs no RLS of its
+ * own. Short-circuits on an empty list rather than sending `.in("id", [])`,
+ * which Supabase would otherwise happily turn into a real (pointless) request.
+ */
+export async function fetchQuestionsByIds(
+  ids: readonly string[],
+): Promise<{ ok: true; questions: DbQuestion[] } | { ok: false; message: string }> {
+  if (ids.length === 0) return { ok: true, questions: [] };
+
+  const { data, error } = await supabase
+    .from("questions")
+    .select("id, question_type, question_text, options, correct_answer, accepted_answers, tolerance, explanation")
+    .in("id", ids);
+
+  if (error) return { ok: false, message: error.message };
+  return { ok: true, questions: (data ?? []) as DbQuestion[] };
 }
