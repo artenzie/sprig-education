@@ -23,6 +23,7 @@ export type Student = {
   nickname: string;
   current_tier: number;
   must_change_pin: boolean;
+  avatar_leaf: string | null;
 };
 
 /**

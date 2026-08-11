@@ -16,6 +16,8 @@ import {
 import { useAuth } from "@/context/auth";
 import type { Student } from "@/context/auth";
 import { nicknameInitials } from "@/lib/studentAuth";
+import { supabase } from "@/lib/supabase";
+import { LEAF_AVATARS, LeafAvatar, isLeafAvatarId } from "@/components/sprig/leafAvatars";
 
 export function TopNav() {
   const [notifOpen, setNotifOpen] = useState(false);
@@ -97,7 +99,11 @@ export function TopNav() {
                   }}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-forest/10 text-[13px] font-semibold text-forest transition-colors hover:bg-forest/15"
                 >
-                  {nicknameInitials(student.nickname)}
+                  {isLeafAvatarId(student.avatar_leaf) ? (
+                    <LeafAvatar id={student.avatar_leaf} className="h-9 w-9" />
+                  ) : (
+                    nicknameInitials(student.nickname)
+                  )}
                 </button>
                 {profileOpen && (
                   <ProfilePanel student={student} onClose={() => setProfileOpen(false)} />
@@ -171,8 +177,20 @@ function NotificationsPanel() {
 }
 
 function ProfilePanel({ student, onClose }: { student: Student; onClose: () => void }) {
-  const { signOut } = useAuth();
+  const { signOut, refreshStudent } = useAuth();
   const navigate = useNavigate();
+  const [savingLeaf, setSavingLeaf] = useState<string | null>(null);
+
+  async function pickLeaf(id: string) {
+    if (savingLeaf) return;
+    setSavingLeaf(id);
+    try {
+      const { error } = await supabase.rpc("set_avatar_leaf", { leaf: id });
+      if (!error) await refreshStudent();
+    } finally {
+      setSavingLeaf(null);
+    }
+  }
 
   // This panel used to show the PIN behind a reveal toggle. It can't any more,
   // and that's the intended outcome rather than a regression: PINs are now
@@ -181,16 +199,35 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
   // is that a forgotten PIN has to be reset by a teacher instead of looked up.
   return (
     <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[280px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
-      <div className="relative m-3 h-28 overflow-hidden rounded-lg border border-border/60 bg-secondary/60">
-        {/* placeholder avatar backdrop */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-forest/15 font-display text-[22px] text-forest">
-            {nicknameInitials(student.nickname)}
-          </div>
+      <div className="m-3 overflow-hidden rounded-lg border border-border/60 bg-secondary/60">
+        <div className="flex h-20 items-center justify-center">
+          {isLeafAvatarId(student.avatar_leaf) ? (
+            <LeafAvatar id={student.avatar_leaf} className="h-14 w-14" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-forest/15 font-display text-[22px] text-forest">
+              {nicknameInitials(student.nickname)}
+            </div>
+          )}
         </div>
-        <button className="absolute bottom-2 right-2 rounded-full border border-border/70 bg-background/90 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.2em] text-muted-foreground transition-colors hover:text-foreground">
-          Customize
-        </button>
+        <div className="grid grid-cols-4 gap-1.5 border-t border-border/60 bg-background/60 p-2">
+          {LEAF_AVATARS.map((leaf) => (
+            <button
+              key={leaf.id}
+              type="button"
+              aria-label={`Use ${leaf.label} avatar`}
+              aria-pressed={student.avatar_leaf === leaf.id}
+              disabled={savingLeaf !== null}
+              onClick={() => pickLeaf(leaf.id)}
+              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-60 ${
+                student.avatar_leaf === leaf.id
+                  ? "ring-2 ring-forest ring-offset-1 ring-offset-background"
+                  : "hover:bg-secondary"
+              }`}
+            >
+              <LeafAvatar id={leaf.id} className="h-8 w-8" />
+            </button>
+          ))}
+        </div>
       </div>
       <div className="px-4 pb-4">
         <div className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">

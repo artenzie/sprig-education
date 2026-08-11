@@ -142,3 +142,135 @@ the file open, not damaged git state.
 | Scratch student account, scratch slide, scratch scripts, and generated CSV all fully removed afterward, confirmed by git status / re-query before committing | done |
 | Migration applied to the real Supabase project, by the user, in the SQL Editor (this project's established workflow — no CLI, no direct DB connection from this tool) | done |
 | Pushed straight to main via fast-forward, matching this project's whole history | done, 387fecd..2e135a0 |
+
+---
+
+# Part two — customizable leaf avatars
+
+## What we did
+
+Students previously had exactly one way to be represented visually in the
+app: two letters in a circle, derived from their nickname. Today added a
+second option — a small curated set of botanical line-art leaf icons a
+student can pick from the profile dropdown, replacing an inert "Customize"
+button that had never done anything. Picking a leaf writes it to the
+student's own row and it now shows up everywhere the initials circle used
+to.
+
+## 6. Why this needed a security-definer function, not just an UPDATE call
+
+`students` has never had an `update` grant for the `authenticated` role —
+only `select` (see `20260725010000_student_rls_policies.sql`). That wasn't
+an oversight to work around; it's the whole point of the table's design.
+The one existing exception, clearing `must_change_pin` after a PIN change,
+goes through `complete_pin_change()`, a `security definer` function that
+runs with the privileges of whoever owns it rather than the caller — which
+is the only way a browser-side client, holding nothing but a signed JWT,
+can ever legally change a row it can't directly write to.
+
+`set_avatar_leaf(leaf text)`, in
+`supabase/migrations/20260811010000_add_avatar_leaf.sql`, is built the same
+way on purpose: `auth.uid()` identifies the caller from their JWT (which
+they cannot forge), `set search_path = ''` stops the function body from
+silently resolving `students` to some other schema a caller might control,
+and the update is scoped to `where id = auth.uid()` so a student can only
+ever touch their own row. The allowed leaf ids are checked twice — once by
+a table-level `check` constraint (so nothing bad can land in the column
+even from outside the app), and once inside the function itself, so a bad
+id fails with a readable error message instead of a raw Postgres
+constraint-violation reaching the client.
+
+## 7. Null as a real state, not a missing one
+
+`avatar_leaf` is nullable with no default. That's a deliberate three-state
+design, not two: a student is either "hasn't picked a leaf yet" (null,
+shown as the initials circle), or "picked leaf X" (shown as that leaf).
+There's no third "no avatar" state to design for, and no migration needed
+to backfill existing students — every row that already exists reads as
+null automatically, which is exactly "still on the initials fallback." The
+fallback check in `TopNav.tsx` is a plain `isLeafAvatarId(student.avatar_leaf)
+? <LeafAvatar .../> : nicknameInitials(...)` — the null case falls straight
+through to code that already existed and was already correct.
+
+## 8. Drawing eight leaves that all agree on a style
+
+`src/components/sprig/leafAvatars.tsx` is a new file, not an addition to
+`JourneyTree.tsx`, even though the tree already had a `Leaf()` component —
+that existing one is a private, unexported piece parameterized for
+scattering leaves around a canopy (position, rotation, grown/ungrown
+color), not something a picker grid could reuse directly. What did carry
+over was the *drawing convention*: a filled blade path under a slightly
+heavier stroke, with a thin center vein — `Leaf()`'s exact recipe, applied
+to eight new silhouettes instead of one. Each of the eight is a fixed
+shape-and-color pair (a maple-ish blade in forest green, a lobed oak shape
+in mint, a fan-shaped ginkgo in terracotta, and so on) rather than a
+shape-picker crossed with a separate color-picker — simpler to build and
+closer to what "pick one of these leaves" actually means to a 13-year-old
+than a two-step customizer would be. All four colors came straight from
+existing CSS custom properties (`var(--forest)`, `var(--mint)`,
+`var(--terracotta)`, `var(--gold)`) — no new design tokens, same palette
+the rest of the app already uses.
+
+## 9. One field, two render sites, no extra plumbing
+
+`Student.avatar_leaf` was added in exactly two places:
+`src/context/auth.ts` (the type) and `AuthProvider.tsx`'s `STUDENT_COLUMNS`
+string (what actually gets selected from the database). Everything after
+that follows for free, because both places in `TopNav.tsx` that show a
+student's identity — the small trigger button and the larger panel avatar
+— already read from the same `useAuth()` hook. Picking a leaf calls
+`supabase.rpc("set_avatar_leaf", { leaf: id })` and then the existing
+`refreshStudent()` (the same re-fetch `AuthProvider` already exposed for
+other flows) — no new state, no manual sync between the two render sites,
+because they were never two separate pieces of state to begin with, just
+two places rendering the same one.
+
+## 10. A scope question worth asking instead of assuming
+
+The original ask included "teacher roster if easy." Reading
+`TeacherStudents.tsx` first showed it renders no avatar or initials
+anywhere — and its own code comment explains that was a deliberate,
+previous decision to keep that page from being "student-shaped." Adding a
+leaf there would have been new UI, not a swap of an existing element, which
+is a different-sized change than what "if easy" implied. Rather than guess
+either way, that got asked directly before writing any code; the answer was
+to keep this session scoped to TopNav only, leaving the roster page
+exactly as it was designed.
+
+## 11. Verifying the fallback, not just the happy path
+
+A migration that applies without error only proves the SQL parsed —
+established standard on this project (see part one, and
+`TECHNICAL_LOG_Aug8/9.md`). Verification here needed two different real
+students, not one: an existing account with a login already on record, and
+a brand-new throwaway seeded via `create-students.ts` (authorized in chat,
+same as every other time this session has needed one).
+
+On the existing student: opened the profile dropdown, picked a leaf,
+watched both render sites update immediately, then reloaded the page from
+a cold navigation and confirmed the leaf was still there — proof it came
+from the database round trip through `refreshStudent()`, not from
+component state that would have reset on reload. On the brand-new student,
+who has never called `set_avatar_leaf`, the dropdown correctly showed the
+initials fallback with none of the eight grid options marked as selected —
+the null path, exercised for real rather than just read in the code.
+
+**Cleanup.** The scratch student's `auth.users` entry and `students` row
+were deleted via a one-off script (service-role key, deleted immediately
+after running), along with the generated PIN hand-out CSV. `git status`
+showed only the real feature files — the migration, the new
+`leafAvatars.tsx`, and the three edited files — before committing.
+
+---
+
+## What was verified (part two)
+
+| Check | Result |
+|---|---|
+| `npx tsc -b`, `npm run build`, `npm run lint` across the whole project | clean (one pre-existing, unrelated lint warning in `TestFlow.tsx`) |
+| A student with no `avatar_leaf` set sees the initials-circle fallback, in both TopNav render sites | done, verified with a freshly seeded student |
+| Picking a leaf updates the nav-trigger avatar and the profile-panel avatar together, with no manual refresh | done |
+| The choice survives a full page reload (not just component state) | done |
+| `set_avatar_leaf()` rejects an unrecognized leaf id with a readable error, and the table `check` constraint backs it up independently | done, read from the migration logic (not separately fault-injected) |
+| Scratch student account and generated CSV fully removed afterward, confirmed by `git status` before committing | done |
+| Migration applied to the real Supabase project, by the user, in the SQL Editor | done |
