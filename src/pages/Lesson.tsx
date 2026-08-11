@@ -18,6 +18,7 @@ type DbSlide = {
   order: number;
   heading: string;
   body: string;
+  slide_type: "text" | "code";
 };
 
 // The shared column set plus `order`, which only the lesson needs -- a lesson
@@ -439,7 +440,13 @@ function SlideStep({
         {slide.heading}
       </h2>
       <div className="mt-8 space-y-5 text-[16px] leading-[1.75] text-foreground/85">
-        <p>{slide.body}</p>
+        {slide.slide_type === "code" ? (
+          <pre className="overflow-x-auto rounded-lg border border-border bg-foreground/[0.04] p-4 text-[14px] leading-[1.6]">
+            <code className="whitespace-pre font-mono">{slide.body}</code>
+          </pre>
+        ) : (
+          <p>{slide.body}</p>
+        )}
       </div>
     </div>
   );
