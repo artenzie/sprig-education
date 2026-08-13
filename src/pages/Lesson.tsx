@@ -1,8 +1,10 @@
 import { Link, useSearchParams } from "react-router-dom";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight, Play, Check, Leaf } from "lucide-react";
+import { InlineMath, BlockMath } from "../components/sprig/Math";
 import { QuestionCard, type Question } from "../components/sprig/QuestionCard";
 import { mapQuestion, type DbQuestion as DbQuestionColumns } from "../lib/questions";
+import { parseMathSegments } from "../lib/parseMath";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../context/auth";
 import { markSubtopicComplete } from "../hooks/useJourney";
@@ -418,6 +420,41 @@ function VideoStep({ tier, topicOrder, title }: { tier: number; topicOrder: numb
   );
 }
 
+// Text-slide bodies can carry `$inline$` and `$$block$$` math inside the
+// prose. Consecutive text/inline runs accumulate into one <p>; a block run
+// flushes that paragraph and renders centered on its own line. A body with
+// no `$` in it produces exactly one paragraph holding the raw string, same
+// as the plain `<p>{body}</p>` this replaces.
+function renderTextBody(body: string): ReactNode {
+  const nodes: ReactNode[] = [];
+  let paragraph: ReactNode[] = [];
+
+  const flushParagraph = (key: string) => {
+    if (paragraph.length > 0) {
+      nodes.push(<p key={key}>{paragraph}</p>);
+      paragraph = [];
+    }
+  };
+
+  parseMathSegments(body).forEach((segment, i) => {
+    if (segment.type === "text") {
+      paragraph.push(<Fragment key={i}>{segment.value}</Fragment>);
+    } else if (segment.type === "inline") {
+      paragraph.push(<InlineMath key={i} math={segment.value} />);
+    } else {
+      flushParagraph(`p-${i}`);
+      nodes.push(
+        <div key={`b-${i}`} className="flex justify-center py-2">
+          <BlockMath math={segment.value} />
+        </div>,
+      );
+    }
+  });
+  flushParagraph("p-final");
+
+  return nodes;
+}
+
 function SlideStep({
   slide,
   subtopicIndex,
@@ -445,7 +482,7 @@ function SlideStep({
             <code className="whitespace-pre font-mono">{slide.body}</code>
           </pre>
         ) : (
-          <p>{slide.body}</p>
+          renderTextBody(slide.body)
         )}
       </div>
     </div>
