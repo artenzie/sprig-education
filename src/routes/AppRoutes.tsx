@@ -1,59 +1,66 @@
 import { Navigate, Routes, Route } from 'react-router-dom'
+import { Suspense, lazy } from 'react'
 import { RequireAuth } from './RequireAuth'
 import { RequireTeacher } from './RequireTeacher'
-import Landing from '../pages/Landing'
-import Login from '../pages/Login'
-import SetPin from '../pages/SetPin'
-import Dashboard from '../pages/Dashboard'
-import Topic from '../pages/Topic'
-import Lesson from '../pages/Lesson'
-import Library from '../pages/Library'
-import Progress from '../pages/Progress'
-import TestFlow from '../pages/TestFlow'
-import Certificate from '../pages/Certificate'
-import Help from '../pages/Help'
-import TeacherStudents from '../pages/TeacherStudents'
+import { PageLoading } from '../components/PageLoading'
+
+// Lazy per route so each page's code loads only when a student actually
+// navigates there, instead of the whole app shipping as one bundle upfront.
+const Landing = lazy(() => import('../pages/Landing'))
+const Login = lazy(() => import('../pages/Login'))
+const SetPin = lazy(() => import('../pages/SetPin'))
+const Dashboard = lazy(() => import('../pages/Dashboard'))
+const Topic = lazy(() => import('../pages/Topic'))
+const Lesson = lazy(() => import('../pages/Lesson'))
+const Library = lazy(() => import('../pages/Library'))
+const Progress = lazy(() => import('../pages/Progress'))
+const TestFlow = lazy(() => import('../pages/TestFlow'))
+const Certificate = lazy(() => import('../pages/Certificate'))
+const Help = lazy(() => import('../pages/Help'))
+const TeacherStudents = lazy(() => import('../pages/TeacherStudents'))
 
 function AppRoutes() {
   return (
-    <Routes>
-      {/* Public. The landing page and the FAQ have to be readable by a
-          teacher deciding whether to use Sprig at all. */}
-      <Route path="/" element={<Landing />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/help" element={<Help />} />
+    <Suspense fallback={<PageLoading />}>
+      <Routes>
+        {/* Public. The landing page and the FAQ have to be readable by a
+            teacher deciding whether to use Sprig at all. */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/help" element={<Help />} />
 
-      {/* Signed in, but deliberately exempt from the must-change-PIN
-          redirect — this is where that redirect sends people, so gating it
-          the same way would loop forever. */}
-      <Route element={<RequireAuth allowPinChange />}>
-        <Route path="/set-pin" element={<SetPin />} />
-      </Route>
+        {/* Signed in, but deliberately exempt from the must-change-PIN
+            redirect — this is where that redirect sends people, so gating it
+            the same way would loop forever. */}
+        <Route element={<RequireAuth allowPinChange />}>
+          <Route path="/set-pin" element={<SetPin />} />
+        </Route>
 
-      {/* Signed in and past the first-time PIN change. */}
-      <Route element={<RequireAuth />}>
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/topic/:topicId" element={<Topic />} />
-        <Route path="/lesson" element={<Lesson />} />
-        <Route path="/library" element={<Library />} />
-        <Route path="/progress" element={<Progress />} />
-        {/* One route for every test type, distinguished by ?type= — the flow
-            differs only in which questions fill the pool, so progress checks
-            will reuse this with an added topic filter rather than a new page. */}
-        <Route path="/test" element={<TestFlow />} />
-        <Route path="/certificate" element={<Certificate />} />
-      </Route>
+        {/* Signed in and past the first-time PIN change. */}
+        <Route element={<RequireAuth />}>
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/topic/:topicId" element={<Topic />} />
+          <Route path="/lesson" element={<Lesson />} />
+          <Route path="/library" element={<Library />} />
+          <Route path="/progress" element={<Progress />} />
+          {/* One route for every test type, distinguished by ?type= — the flow
+              differs only in which questions fill the pool, so progress checks
+              will reuse this with an added topic filter rather than a new page. */}
+          <Route path="/test" element={<TestFlow />} />
+          <Route path="/certificate" element={<Certificate />} />
+        </Route>
 
-      {/* Signed in as a teacher. A separate guard rather than a flag on
-          RequireAuth, because the two check opposite things: RequireAuth
-          insists on a `students` row and a completed PIN change, neither of
-          which a teacher has or ever will. */}
-      <Route element={<RequireTeacher />}>
-        <Route path="/teacher" element={<TeacherStudents />} />
-      </Route>
+        {/* Signed in as a teacher. A separate guard rather than a flag on
+            RequireAuth, because the two check opposite things: RequireAuth
+            insists on a `students` row and a completed PIN change, neither of
+            which a teacher has or ever will. */}
+        <Route element={<RequireTeacher />}>
+          <Route path="/teacher" element={<TeacherStudents />} />
+        </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
 

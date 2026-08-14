@@ -187,3 +187,131 @@ and 13 August; this session verified the *data* reached Supabase intact
 rather than re-verifying the renderers themselves. Worth a real
 click-through before the pilot, same as every other tier's "read before
 shipping" note says.
+
+---
+---
+
+# Session 2 — route-level code splitting
+
+## What we did
+
+`npm run build` was warning that the production bundle had crossed Vite's
+500 kB default threshold (~570 kB) — everything the app needed, across
+every page a student or teacher might never visit in a given session, was
+shipping in one JS file on first load. Fixed it with route-level code
+splitting: every page component in `src/routes/AppRoutes.tsx` now loads
+through `React.lazy()` instead of a static `import`, wrapped in a single
+`<Suspense>` boundary around the whole `<Routes>` tree. A page's code now
+downloads only when a student actually navigates to it.
+
+```
+const Dashboard = lazy(() => import('../pages/Dashboard'))
+...
+<Suspense fallback={<PageLoading />}>
+  <Routes>
+    <Route path="/dashboard" element={<Dashboard />} />
+    ...
+```
+
+## 1. Why `React.lazy()` needs a fallback, and why one boundary was enough
+
+`React.lazy()` wraps a dynamic `import()` — the first time a lazy
+component is about to render, React "suspends" that render and walks up
+the tree looking for the nearest `<Suspense>` ancestor to show instead,
+while the browser fetches that page's chunk in the background. Skip the
+`<Suspense>` boundary and React throws instead of rendering anything.
+
+`AppRoutes.tsx` puts `RequireAuth` and `RequireTeacher` in as **layout
+routes** — `<Route element={<RequireAuth />}>` wrapping child `<Route>`s,
+with `RequireAuth` itself rendering `<Outlet />` for whichever child
+matched. That structure is what let one `<Suspense>` around the entire
+`<Routes>` block cover all twelve routes at once: React doesn't care how
+many components sit between a suspending one and its boundary — a lazy
+`Dashboard` rendered three components deep, through `Outlet`, still finds
+the same top-level `<Suspense>`. No per-route wrapping needed.
+
+One consequence worth knowing: the auth check in `RequireAuth` and the
+chunk fetch for the page underneath it are two separate async things,
+resolved one after the other, not at once. A student who's already
+authenticated but navigating to a page chunk they haven't fetched yet sees
+`PageLoading` for the chunk fetch alone — `RequireAuth`'s own `loading`
+state (session restore from `localStorage`) only shows up on a fresh page
+load or refresh, before the auth check has resolved at all.
+
+## 2. One fallback component, two call sites
+
+The gap-filler UI already existed — `RequireAuth.tsx` had `AuthPending`
+("Finding your sprig", pulsing forest dot, uppercase mono tracking) for
+its own `loading` state, and `RequireTeacher.tsx` already reused it. Rather
+than invent a second, differently-styled loading screen for lazy chunks,
+that visual was pulled out into `src/components/PageLoading.tsx` — a
+`label` prop, `"Loading"` by default — and `AuthPending` became a one-line
+wrapper around it (`<PageLoading label="Finding your sprig" />`). Same
+component now backs both the auth-pending state and the `Suspense`
+fallback, so a loading moment always looks the same regardless of which
+async thing the app is waiting on.
+
+## 3. What the build actually looked like, before and after
+
+Before: one `index-*.js` around 570 kB, everything in it.
+
+After (`npm run build`, no warning):
+
+```
+dist/assets/index-DigjsMQI.js         447.45 kB │ gzip: 130.21 kB   <- shared app shell + libraries
+dist/assets/Lesson-DSNJ7Bqg.js        275.04 kB │ gzip:  82.37 kB   <- KaTeX ships only here
+dist/assets/Dashboard-Bkv3Zcsi.js      28.52 kB │ gzip:   7.99 kB
+dist/assets/Landing-CSzhAYyX.js        14.98 kB │ gzip:   4.26 kB
+dist/assets/Progress-DFsJbYdd.js       14.13 kB │ gzip:   4.37 kB
+dist/assets/TopNav-bJk-zEBy.js         13.03 kB │ gzip:   4.28 kB
+dist/assets/TestFlow-ByeuJ3-f.js       12.45 kB │ gzip:   3.98 kB
+... (rest of the twelve pages, 5-12 kB each)
+```
+
+The shared shell dropped under the 500 kB line on its own, without moving
+a single byte elsewhere — nothing was deleted, the same code just now sits
+in chunks that load on demand. `Lesson.tsx` stayed the single largest
+chunk by a wide margin, because that's the only page that pulls in KaTeX
+(added 13 August for maths rendering) — worth knowing if bundle size comes
+up again, since that's where the next win would be, not in further
+route-splitting.
+
+## What was verified
+
+Built the production bundle (`npm run build`) and confirmed the bundle-size
+warning was gone. Then served that exact build with `vite preview`
+(not `vite dev` — this checks the real chunked output, not a dev-server
+approximation) and drove it in a real browser, logged in both as a
+student and as a teacher, through every one of the twelve routes:
+
+| Route | Verified |
+|---|---|
+| `/` (Landing) | ✅ renders |
+| `/login` | ✅ renders, both student and teacher forms |
+| `/help` | ✅ renders |
+| `/set-pin` | ✅ reached via forced-PIN-change redirect, saves and continues |
+| `/dashboard` | ✅ renders, journey tree with real progress data |
+| `/topic/:topicId` | ✅ renders, subtopic list |
+| `/lesson` | ✅ renders, slide content |
+| `/library` | ✅ renders, tier tabs and lesson list |
+| `/progress` | ✅ renders, growth chart section |
+| `/test` | ✅ renders, Growth Check start screen |
+| `/certificate` | ✅ renders (mock data, as already documented) |
+| `/teacher` | ✅ renders, roster and class progress chart |
+
+Console was checked for errors after every navigation across the whole
+session — none. The `Suspense` fallback itself was also caught mid-render
+on a fresh full-page load to `/help`, confirming it actually shows (rather
+than the chunk just happening to load too fast to notice) and that it
+matches the design system rather than a generic spinner.
+
+The student and teacher accounts used for this were scratch accounts
+(`codesplit-scratch@sprig.study`, nickname "Wandering Finch") created via
+`scripts/create-teacher.ts` and `scripts/create-students.ts` specifically
+for this check, and both were deleted afterward via the Supabase admin API
+— nothing pilot-facing was left behind.
+
+**Not done this session:** trimming the `Lesson.tsx` chunk itself (KaTeX is
+the main contributor at 275 kB) — flagged above as the next lever if bundle
+size needs to come down further, not attempted here since the ask was
+specifically route splitting.

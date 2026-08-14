@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/auth";
+import { PageLoading } from "@/components/PageLoading";
 
 /**
  * The gate in front of every page that shows or touches a student's own data.
@@ -56,14 +57,7 @@ export function RequireAuth({ allowPinChange = false }: { allowPinChange?: boole
 
 /** Exported so RequireTeacher shows the identical gap-filler. */
 export function AuthPending() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
-        <span className="h-1.5 w-1.5 rounded-full bg-forest sprig-glow" />
-        <span>Finding your sprig</span>
-      </div>
-    </div>
-  );
+  return <PageLoading label="Finding your sprig" />;
 }
 
 function AccountIncomplete() {
