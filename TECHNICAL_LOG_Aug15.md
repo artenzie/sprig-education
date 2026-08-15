@@ -224,24 +224,86 @@ the kind of thing that quietly erodes trust in the numbers.
 
 ---
 
-## Migrations no longer describe the live database
+## RETRACTED: "migrations no longer describe the live database"
 
-Signed in as a student, `select` on `topics` returns rows. It should not.
+**This section originally claimed that `topics`, `subtopics`, `slides` and
+`questions` had no SELECT policy in any migration, and that RLS must therefore
+have been disabled by hand in the Supabase dashboard. That was wrong. It is
+corrected here rather than deleted, because the way it went wrong is the useful
+part.**
 
-`topics`, `subtopics`, `slides` and `questions` all have `alter table … enable
-row level security` and are **never given a SELECT policy** in any migration.
-Under RLS the default is deny: enabling RLS without policies means nobody reads
-anything. A `grant select` does not help — grants and policies are two separate
-gates and you must pass both.
+### What is actually true
 
-Since the app demonstrably reads curriculum, RLS must have been switched off on
-those four tables directly in the Supabase dashboard at some point. That change
-exists only in the live database, not in the migration history.
+The four policies exist, in tracked migration history, at
+`20260724010000_seed_topic_I_I_content.sql:67-70`:
 
-The practical risk: rebuilding this database from `supabase/migrations/` — new
-environment, disaster recovery, a second school — produces an app that loads,
-authenticates, and shows an empty curriculum, with no error anywhere. Worth
-reconciling into a real migration before the pilot.
+```sql
+create policy "Public read access" on topics    for select using (true);
+create policy "Public read access" on subtopics for select using (true);
+create policy "Public read access" on slides    for select using (true);
+create policy "Public read access" on questions for select using (true);
+```
+
+Every table is fully covered — RLS enabled, policy created, grant applied:
+
+| table | RLS enabled | SELECT policy | GRANT |
+|---|---|---|---|
+| `topics` | `20260721000000_init_schema.sql:89` | seed:67 | `20260724020000` |
+| `subtopics` | `20260721000000_init_schema.sql:90` | seed:68 | `20260724020000` |
+| `questions` | `20260721000000_init_schema.sql:91` | seed:70 | `20260724020000` |
+| `slides` | `20260724000000_add_slides…:21` | seed:69 | `20260724020000` |
+
+No migration contains `drop policy` for any of them, and none contains
+`disable row level security` at all. A rebuild from `supabase/migrations/`
+produces a working app with a readable curriculum. **There is no drift and
+nothing to reconcile.**
+
+Confirmed empirically as well: the anon key reads 20 topics, 80 subtopics, 334
+slides and 336 questions — identical counts to the service-role key, which
+bypasses RLS — while `students` and `progress` correctly deny anon. That is
+exactly what `using (true)` plus the grant predicts.
+
+### Why the wrong conclusion was reached
+
+Two failures compounded, and both are worth avoiding again.
+
+**The search looked in the wrong shape of file.** An automated sweep for policy
+definitions checked the migrations whose names describe security work
+(`…_student_rls_policies.sql`, `…_teacher_tools.sql`) and reported that no
+SELECT policy existed for the curriculum tables. The policies were there all
+along — sitting at the bottom of a seventy-line *content seed* file, below a
+wall of question inserts. A search for "where are the policies" that assumes
+policies live in policy-shaped files will miss policies that do not.
+
+**A negative result was treated as a finding.** "I did not find X" was written
+up as "X does not exist." Those are different claims, and the gap between them
+is exactly the width of the search's blind spot. A negative is only as strong
+as the search that produced it, and the way to promote one is to look for the
+thing from the opposite direction — here, checking whether observed behaviour
+was *consistent* with the claim. It was not: the app plainly read curriculum
+data, which under default-deny should have been impossible. That contradiction
+was visible at the time and got explained away ("someone must have disabled RLS
+in the dashboard") instead of being treated as evidence the premise was wrong.
+
+**The rule: when a conclusion requires inventing an unobserved event to hold
+together, suspect the conclusion, not the world.** The invented event here was a
+dashboard change nobody remembered making, and it existed only to rescue a claim
+that a slightly wider `grep` would have refuted.
+
+### The one real (and minor) observation that survives
+
+The four policies live in a *content seed* migration rather than a security one.
+Every other policy in this project follows the house convention documented at
+`20260725010000_student_rls_policies.sql:26` — a dedicated migration, with
+`drop policy if exists` before each `create policy` so the file is re-runnable.
+The seed file does neither.
+
+Nothing is wrong today. The latent risk is that someone standing up a fresh
+environment might reasonably skip or prune the Tier I *content* seed and
+silently lose curriculum RLS along with it. Relocating the four declarations
+into a properly named, idempotent migration would remove that coupling. It
+would be a no-op against the live database, so it was judged not worth a
+migration for now — recorded here so the reasoning is not lost.
 
 ---
 
