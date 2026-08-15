@@ -2,14 +2,28 @@
 
 ## What this session was
 
-A full manual QA pass over the whole app: auth, database, every page, every
-button, as both a student and a teacher. No code was changed. The output is a
-list of findings, plus one thing that turned out to matter more than any of the
-UI bugs — a foreign key that quietly makes students undeletable.
+Two halves. First a full manual QA pass over the whole app — auth, database,
+every page, every button, as both a student and a teacher — which produced a
+ranked list of findings, including one thing that mattered more than any of the
+UI bugs: a foreign key that quietly made students undeletable. Then the top six
+of those findings were fixed, verified and shipped.
 
-Four scratch accounts were created for the pass and deleted afterwards. The
-eight pre-existing students from July and the two pre-existing teachers were
-not touched.
+The sections below are in the order the work happened: what each bug was and why
+it existed, then **The fixes, and how each was proven**, then what the QA pass
+found already working. One finding is **retracted** — it was wrong, and the way
+it went wrong is written up rather than deleted.
+
+Read in one sitting, the through-line is not really "six bugs". It is that a
+plausible explanation is not evidence. A latent bug that new content finally
+exercised looked exactly like a regression; a missing policy that a search
+failed to find looked exactly like a policy that did not exist; an obvious
+one-line clamp for the bar chart was in fact the very thing causing the bug. In
+each case the cost of checking was minutes and the cost of assuming would have
+been a wrong fix shipped with confidence.
+
+Five scratch accounts were created across the session and all were deleted
+afterwards. The eight pre-existing students from July and the two pre-existing
+teachers were not touched.
 
 ---
 
@@ -88,12 +102,16 @@ When something "breaks" right after you add content, check whether the code
 ever handled that shape — often the answer is that it never did, and you simply
 never asked it to.
 
-### The fix, when you come to it
+### The fix
 
 Split text segments on `\n\n` (paragraph break) and `\n` (line break) inside
-`renderTextBody`, emitting separate `<p>`s and `<br>`s. Alternatively, put
+`renderTextBody`, emitting separate `<p>`s and `<br>`s. The alternative was
 `white-space: pre-wrap` on the container — a one-line change, but it also makes
-the source's own soft wrapping significant, so the explicit split is safer.
+the source's own soft wrapping significant, so the explicit split won.
+
+Done, in `eac1c96` — see [The fixes, and how each was proven](#the-fixes-and-how-each-was-proven)
+for what shipped, the CRLF near-miss it turned up, and the DOM measurements that
+back it.
 
 ---
 
@@ -181,6 +199,8 @@ places where it was thought about (`auth.users`, `teacher_id`) and defaulted
 everywhere else.
 
 The fix is a migration altering the four constraints to `on delete cascade`.
+Shipped as `20260815000000_cascade_student_deletes.sql` in `faa8f1d`, and proven
+by actually deleting a student who had rows in two of those tables.
 
 ---
 
@@ -206,8 +226,13 @@ completion renders as an oval blob rather than a bar** — which is most topics,
 for most students, most of the time. It hits the teacher's class chart too,
 since both pages share the component.
 
-The fix is to clamp the radius yourself: `ry={Math.min(38, h / 2)}`, or draw a
-path with only the top two corners rounded.
+The obvious fix — "clamp the radius yourself", `ry={Math.min(38, h / 2)}` — was
+written down here first and is **wrong**. It is a no-op: clamping `ry` to
+`h / 2` is exactly what SVG already does, and doing it explicitly reproduces the
+bug rather than fixing it. Left in as a reminder that a fix which merely restates
+the behaviour you are trying to change will apply cleanly, pass review, and
+change nothing. What actually shipped was the path — see
+[The fixes](#the-fixes-and-how-each-was-proven).
 
 ### A baseline labelled as a Growth Check
 
@@ -304,6 +329,118 @@ silently lose curriculum RLS along with it. Relocating the four declarations
 into a properly named, idempotent migration would remove that coupling. It
 would be a no-op against the live database, so it was judged not worth a
 migration for now — recorded here so the reasoning is not lost.
+
+---
+
+## The fixes, and how each was proven
+
+All six shipped the same day, in two commits: `eac1c96` (five code fixes) and
+`faa8f1d` (the migration). They were split because the migration could not be
+applied from here — this project has no `config.toml` and no CLI link, so
+migrations are pasted into the Supabase SQL Editor by hand — and committing an
+unapplied migration would have meant committing something unproven.
+
+### 1. Line breaks (`src/pages/Lesson.tsx`)
+
+A blank line now starts a new `<p>`, a single newline becomes a `<br>`, and
+inline math still flows inside its sentence. Block `$$math$$` still flushes to
+its own centred div, as before.
+
+**A near-miss worth recording.** The first version split on `/\n{2,}/`. The seed
+`.sql` files on disk are CRLF, and `\r\n\r\n` does not match `\n{2,}` — the two
+`\n` are not adjacent, there is a `\r` between them. Had the stored bodies
+carried CRLF, the paragraph split would have done nothing at all and the fix
+would have appeared to work while silently failing.
+
+The right move was to check rather than assume, because the answer was not
+guessable: the `.sql` files are only a historical record, and Tier IV was
+inserted through supabase-js. Querying the actual table showed all 334 slides
+are LF-only, 154 of them with real `\n\n` breaks. The fix was already correct.
+Line endings are normalised anyway now — one `replace` makes a whole class of
+failure impossible rather than merely unlikely, and the documented workflow
+(pasting CRLF files into the SQL Editor) could reintroduce it at any time.
+
+**Proven** by DOM structure, not by eye: IV.II "Step by step" renders 2
+paragraphs / 4 `<br>` / 5 inline KaTeX — a five-line numbered list plus a
+separate conclusion, where before it was one run-on line. IV.I "Save it and run
+it" renders 4 paragraphs. A Tier I slide with no newlines still renders exactly
+1 paragraph and 0 `<br>`, which is the regression check that matters most.
+
+**A limit worth knowing.** No Tier IV slide contains an indented line, so nested
+lists never arise. If one is ever authored, `<br>` alone will not save it —
+HTML collapses leading whitespace however the line break is produced. That would
+need `white-space: pre-wrap` or real `<ul>` markup.
+
+### 2. The cascade (`supabase/migrations/20260815000000_…`)
+
+All four child tables now declare `on delete cascade`. `students.teacher_id`
+deliberately stays `on delete set null`: deleting a teacher must orphan their
+pupils, not delete them. Two foreign keys, two different right answers — which
+is the whole lesson of this bug.
+
+The constraints are located by what they point at rather than by assumed name.
+Hardcoding `<table>_student_id_fkey` and failing to match would have been worse
+than useless: `drop constraint if exists` would silently no-op, the `add` would
+put a *second* foreign key on the column, and the original NO ACTION rule would
+still be sitting there blocking deletes — a fix that reports success and changes
+nothing.
+
+**Proven behaviourally.** Reading `confdeltype` out of the catalog would only
+confirm the letter `c`; it cannot tell you a delete actually completes. So a
+scratch student was given 4 progress rows and 1 test attempt — precisely the
+state that used to fail — and deleted. One `deleteUser` call, OK in 377ms, zero
+rows left in all four child tables.
+
+**Not re-verified:** that `students.teacher_id` is still `set null`. The
+migration's DO block only selects constraints whose `confrelid` is `students`
+and whose column is `student_id`, and `teacher_id` is neither, so it is outside
+what the loop can touch. The verification query at the foot of the migration
+answers it directly if you want certainty.
+
+### 3. Bars that were secretly ellipses (`TopicBars.tsx`)
+
+The obvious fix does not work, and that is the interesting part. Clamping by
+hand — `ry={Math.min(barW/2, h/2)}` — is *precisely what the renderer already
+does*, because SVG clamps a corner radius to half its side automatically. That
+clamp is not the bug's neighbour; it is the bug.
+
+An ellipse appears exactly when `rx === width/2` **and** `ry === height/2`
+together. Keeping the full-width cap while refusing to fully round the foot
+therefore means leaving the rounded-rectangle shape family entirely, so the bar
+is now a path: rounded top, flat foot on the baseline. It also sits better
+against the axis than the old floating capsule did.
+
+**Proven** by walking percentages 0/1/5/10/25/29/30/50/75/100 and computing both
+geometries: the old code produces 6 ellipses across those ten values, the new
+one produces none, and the crossover lands at 29%→30% exactly as `76/256`
+predicts. Then confirmed in the browser with a 25% bar rendered beside a 75% one.
+
+### 4. Three cases do not fit a boolean (`Progress.tsx`, `growth-check-parked.tsx`)
+
+`testType === "progress_check" ? "progress" : "growth"` silently filed every
+baseline under "growth". Card styling now lives in one record keyed by test
+type, so the badge and the legend cannot drift apart and a fourth type would be
+a one-line change. **Proven:** a seeded baseline produces four missed cards, all
+badged "Baseline", with all three sources listed in the legend.
+
+### 5. Inline math may now cross one line (`parseMath.ts`)
+
+Hardening, not a live bug — no current content trips it. One continuation line
+is allowed and no more, so a stray unpaired `$` can swallow at most two lines
+instead of running to the next `$` however far away, and a blank line ends it
+outright. **Proven** against the real module: the same 122 dollar characters
+still resolve to the same 55 expressions, a wrapped formula now matches, and
+four guardrail cases hold.
+
+### 6. The Help box now actually sends (`Help.tsx`)
+
+It answered a submitted message with "Sent — thank you" and promised a reply
+within two days, while discarding the text. The brief was to soften the wording;
+the wording was not really the problem. Send now opens the reader's mail client
+with what they typed, addressed to the contact already on the landing page, so
+the page's claim is simply true. **Proven** by asserting the encoding survives
+`&`, `?`, newlines and em-dashes — any of which would otherwise corrupt the
+message — without clicking Send and launching a mail app.
 
 ---
 
