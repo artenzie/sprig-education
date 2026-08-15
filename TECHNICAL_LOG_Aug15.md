@@ -391,11 +391,36 @@ scratch student was given 4 progress rows and 1 test attempt — precisely the
 state that used to fail — and deleted. One `deleteUser` call, OK in 377ms, zero
 rows left in all four child tables.
 
-**Not re-verified:** that `students.teacher_id` is still `set null`. The
-migration's DO block only selects constraints whose `confrelid` is `students`
-and whose column is `student_id`, and `teacher_id` is neither, so it is outside
-what the loop can touch. The verification query at the foot of the migration
-answers it directly if you want certainty.
+**And confirmed in the catalog too**, for the one thing the behavioural test
+could not cover: that `students.teacher_id` is still `set null` afterwards. That
+is the regression this migration could plausibly have caused and the one that
+would hurt most — cascade there would mean deleting a staff account wiped a
+whole class.
+
+The verification query at the foot of the migration was run in the SQL Editor
+and returned `confdeltype` as expected:
+
+| child_table | column | parent | on_delete |
+|---|---|---|---|
+| `daily_checkins` | `student_id` | `students` | `c` — cascade |
+| `progress` | `student_id` | `students` | `c` — cascade |
+| `students` | `teacher_id` | `teachers` | **`n` — set null** |
+| `test_attempts` | `student_id` | `students` | `c` — cascade |
+| `weekly_checkins` | `student_id` | `students` | `c` — cascade |
+
+The two checks answer different questions and neither replaces the other. The
+delete proved the cascade actually completes, which a catalog read cannot tell
+you. The catalog read covered the constraint that was deliberately *not* changed,
+which the delete never exercised. Between them: what changed did change, and
+what should not change did not.
+
+Worth noting the DO block could not have touched `teacher_id` in any case — it
+selects only constraints whose `confrelid` is `students` and whose column is
+`student_id`, and `teacher_id` is neither (its `conrelid` is `students`, its
+`confrelid` is `teachers`). The check was cheap enough to run anyway. A
+structural argument for why a bug is impossible is worth exactly as much as the
+reading of the code it rests on, and this session had already produced one
+confident structural argument that turned out to be wrong.
 
 ### 3. Bars that were secretly ellipses (`TopicBars.tsx`)
 
