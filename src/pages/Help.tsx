@@ -133,9 +133,28 @@ function Help() {
   );
 }
 
+// There is no inbox behind this box yet, so it must not behave as though there
+// is. It previously answered a sent message with "Sent — thank you" and
+// promised a reply within two days, while doing nothing with the text at all.
+// Unfinished UI is one thing; telling a 13-year-old asking for help that their
+// message is on its way when it is not is another.
+//
+// Rather than only soften the wording, the button now opens the reader's own
+// mail client with what they typed already in the body, addressed to the same
+// contact used on the landing page. The promise on the page becomes true, and
+// the message actually reaches someone.
+const CONTACT_EMAIL = "hello@sprig.study";
+
 function ContactBox() {
   const [msg, setMsg] = useState("");
-  const [sent, setSent] = useState(false);
+
+  const openMailClient = () => {
+    if (msg.trim().length === 0) return;
+    const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
+      "Sprig — a question",
+    )}&body=${encodeURIComponent(msg)}`;
+    window.location.assign(url);
+  };
 
   return (
     <section className="mt-10 rounded-2xl border border-border bg-card/50 p-7">
@@ -144,33 +163,30 @@ function ContactBox() {
           Still confused, or need help?
         </h2>
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground md:inline">
-          We reply within 2 days
+          Opens your email app
         </span>
       </div>
       <p className="mt-2 text-[14.5px] leading-[1.65] text-muted-foreground">
-        Check the questions below, or reach out to us directly.
+        Check the questions below, or write to us at{" "}
+        <a href={`mailto:${CONTACT_EMAIL}`} className="text-forest underline underline-offset-4">
+          {CONTACT_EMAIL}
+        </a>
+        .
       </p>
       <div className="mt-5">
         <textarea
           value={msg}
-          onChange={(e) => {
-            setMsg(e.target.value);
-            if (sent) setSent(false);
-          }}
+          onChange={(e) => setMsg(e.target.value)}
           rows={4}
           placeholder="Type your question or issue here…"
           className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-[14.5px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
         />
         <div className="mt-3 flex items-center justify-between gap-4">
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-            {sent ? "Sent — thank you" : "Nothing personal required"}
+            Nothing personal required
           </span>
           <button
-            onClick={() => {
-              if (msg.trim().length === 0) return;
-              setSent(true);
-              setMsg("");
-            }}
+            onClick={openMailClient}
             disabled={msg.trim().length === 0}
             className="inline-flex items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-[13px] font-medium text-primary-foreground transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:translate-y-0"
           >

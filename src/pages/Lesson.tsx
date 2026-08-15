@@ -422,10 +422,37 @@ function VideoStep({ tier, topicOrder, title }: { tier: number; topicOrder: numb
 
 // Text-slide bodies can carry `$inline$` and `$$block$$` math inside the
 // prose. Consecutive text/inline runs accumulate into one <p>; a block run
-// flushes that paragraph and renders centered on its own line. A body with
-// no `$` in it produces exactly one paragraph holding the raw string, same
-// as the plain `<p>{body}</p>` this replaces.
+// flushes that paragraph and renders centered on its own line.
+//
+// The bodies also carry their own line breaks, and those have to be turned
+// into real elements. In HTML a newline is just whitespace: the browser
+// collapses any run of spaces, tabs and newlines down to a single space when
+// it lays text out. That is deliberate — it is what lets you indent markup
+// without the indentation showing up on the page — but it means a `\n` dropped
+// straight into a <p> renders as nothing at all.
+//
+// This bit us the moment Tier IV arrived. Tiers I and II were written as
+// single blocks of prose with no internal line breaks, so nothing looked
+// wrong; Tier IV is written as numbered steps, variable definitions and worked
+// examples, and 82 of its 87 text slides depend on line breaks. A five-step
+// worked example was rendering as one unbroken run-on line. The renderer had
+// never handled the case — it just had not been asked to before.
+//
+// So: a blank line (`\n\n`) starts a new paragraph, a single newline becomes a
+// <br> inside the current one, and inline math keeps flowing inline. A body
+// with no `$` and no newline in it still produces exactly one paragraph
+// holding the raw string, same as the plain `<p>{body}</p>` this replaces.
 function renderTextBody(body: string): ReactNode {
+  // Normalise line endings before anything looks at them. Every slide in the
+  // database today is LF-only (checked, all 334 of them), but the seed .sql
+  // files on disk are CRLF and the documented way to apply a migration is to
+  // paste it into the Supabase SQL Editor by hand. If a paste ever preserved
+  // the CRLF, `\r\n\r\n` would slip straight past the `\n{2,}` split below and
+  // every paragraph break in that slide would silently stop working — the exact
+  // failure this function was just fixed for. One replace makes that
+  // impossible rather than merely unlikely.
+  const text = body.replace(/\r\n?/g, "\n");
+
   const nodes: ReactNode[] = [];
   let paragraph: ReactNode[] = [];
 
@@ -436,9 +463,25 @@ function renderTextBody(body: string): ReactNode {
     }
   };
 
-  parseMathSegments(body).forEach((segment, i) => {
+  // Single newlines inside one paragraph become <br>. Empty strings are
+  // skipped so a leading or trailing newline does not emit a stray fragment,
+  // but the <br> itself is still emitted — that is the line break.
+  const pushLines = (text: string, keyBase: string) => {
+    text.split("\n").forEach((line, li) => {
+      if (li > 0) paragraph.push(<br key={`${keyBase}-br-${li}`} />);
+      if (line !== "") paragraph.push(<Fragment key={`${keyBase}-l-${li}`}>{line}</Fragment>);
+    });
+  };
+
+  parseMathSegments(text).forEach((segment, i) => {
     if (segment.type === "text") {
-      paragraph.push(<Fragment key={i}>{segment.value}</Fragment>);
+      // A run of two or more newlines is a paragraph break. Splitting here
+      // rather than on every newline is what keeps `$inline$` math flowing
+      // inside the sentence it belongs to.
+      segment.value.split(/\n{2,}/).forEach((block, bi) => {
+        if (bi > 0) flushParagraph(`p-${i}-${bi}`);
+        pushLines(block, `${i}-${bi}`);
+      });
     } else if (segment.type === "inline") {
       paragraph.push(<InlineMath key={i} math={segment.value} />);
     } else {

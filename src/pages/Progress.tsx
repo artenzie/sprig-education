@@ -4,10 +4,15 @@ import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 import { GrowthChart, type GrowthPoint } from "@/components/sprig/GrowthChart";
 import { TopicBars } from "@/components/sprig/TopicBars";
-import { Legend, MissedCardView, type MissedCard } from "@/components/sprig/growth-check-parked";
+import {
+  Legend,
+  MissedCardView,
+  type MissedCard,
+  type MissedCardSource,
+} from "@/components/sprig/growth-check-parked";
 import { useJourney } from "@/hooks/useJourney";
 import { useAuth } from "@/context/auth";
-import { fetchTestAttempts, type TestAttemptRow } from "@/lib/testAttempts";
+import { fetchTestAttempts, type TestAttemptRow, type TestType } from "@/lib/testAttempts";
 import { latestOutcomes, missedQuestionIds, topicMastery } from "@/lib/testMastery";
 import { describeCorrectAnswer, fetchQuestionsByIds, mapQuestion, type DbQuestion } from "@/lib/questions";
 
@@ -62,6 +67,25 @@ function toGrowthPoints(attempts: TestAttemptRow[]): GrowthPoint[] {
       }),
       score: attempt.score,
     }));
+}
+
+/**
+ * Which test a missed question was last missed on.
+ *
+ * There are three test types and this used to be written as a boolean --
+ * `testType === "progress_check" ? "progress" : "growth"` -- which quietly
+ * filed every baseline under "growth". Since the baseline is by definition the
+ * first test anyone takes, a new student's entire "Worth another look" list was
+ * labelled as missed on a Growth Check they had never sat.
+ *
+ * `undefined` falls through to "growth" only as a defensive default: a card is
+ * built from a missed-question id that came out of `latestOutcomes()`, so the
+ * entry is always present in practice.
+ */
+function missedCardSource(testType: TestType | undefined): MissedCardSource {
+  if (testType === "baseline") return "baseline";
+  if (testType === "progress_check") return "progress";
+  return "growth";
 }
 
 function ProgressPage() {
@@ -157,7 +181,7 @@ function ProgressPage() {
             question: question.prompt,
             answer: describeCorrectAnswer(question),
             explanation: question.explanation,
-            source: entry?.testType === "progress_check" ? ("progress" as const) : ("growth" as const),
+            source: missedCardSource(entry?.testType),
             topic: (entry && topicTitleById.get(entry.topicId)) ?? "—",
           };
         })

@@ -61,17 +61,12 @@ export function TopicBars({
         {items.map((item, i) => {
           const percent = item.percent;
           const x = padL + i * (barW + gap);
-          const h = (percent / 100) * innerH;
+          const h = Math.max((percent / 100) * innerH, 2);
           const y = padT + innerH - h;
           return (
             <g key={item.id}>
-              <rect
-                x={x}
-                y={y}
-                width={barW}
-                height={Math.max(h, 2)}
-                rx={barW / 2}
-                ry={barW / 2}
+              <path
+                d={barPath(x, y, barW, h)}
                 fill="var(--forest)"
                 opacity={0.9}
               />
@@ -108,6 +103,44 @@ export function TopicBars({
       </svg>
     </div>
   );
+}
+
+/**
+ * A bar with a rounded cap on top and a flat foot on the baseline.
+ *
+ * This used to be a <rect> with `rx={barW/2} ry={barW/2}`, which looked right
+ * for tall bars and silently turned short ones into ellipses. The reason is a
+ * rule in the SVG spec rather than anything wrong with those numbers: a corner
+ * radius is clamped to half the side it sits on. `rx` was 38 against a 76-wide
+ * bar, so it stayed 38 — but `ry` was clamped to `height / 2` the moment the
+ * bar was shorter than 76px. A rectangle whose radii are exactly half its width
+ * AND half its height is, geometrically, an ellipse.
+ *
+ * With innerH at 256px that made the threshold `76 / 256`, so every topic under
+ * roughly 30% completion rendered as an oval blob — most topics, for most
+ * students, on both the student Progress page and the teacher class chart.
+ *
+ * Clamping `ry` by hand does NOT fix it: `Math.min(barW/2, h/2)` is precisely
+ * what the renderer was already doing. Keeping a full-width cap while refusing
+ * to fully round the bottom means leaving the rounded-rect shape family
+ * altogether, hence a path.
+ *
+ * The cap radius is `min(barW/2, h)` so a bar taller than half its width gets a
+ * clean semicircular top, and a very short one degrades to a small nub instead
+ * of a lens. The foot is always square, which also sits better against the
+ * baseline than the old floating capsule did.
+ */
+function barPath(x: number, y: number, w: number, h: number): string {
+  const r = Math.min(w / 2, h);
+  return [
+    `M ${x} ${y + h}`,
+    `L ${x} ${y + r}`,
+    `A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+    `L ${x + w - r} ${y}`,
+    `A ${r} ${r} 0 0 1 ${x + w} ${y + r}`,
+    `L ${x + w} ${y + h}`,
+    "Z",
+  ].join(" ");
 }
 
 // Longer titles (e.g. "Where Money Really Comes From") can still produce a
