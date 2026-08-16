@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ChevronDown, ArrowUpRight } from "lucide-react";
+import { ChevronDown, ArrowUpRight, Check } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
+import { submitHelpMessage, HELP_MESSAGE_MAX } from "@/lib/help";
 
 type QA = { q: string; a: string };
 type Section = { id: string; title: string; items: QA[] };
@@ -133,28 +134,86 @@ function Help() {
   );
 }
 
-// There is no inbox behind this box yet, so it must not behave as though there
-// is. It previously answered a sent message with "Sent — thank you" and
-// promised a reply within two days, while doing nothing with the text at all.
-// Unfinished UI is one thing; telling a 13-year-old asking for help that their
-// message is on its way when it is not is another.
+// The third and last state of this box.
 //
-// Rather than only soften the wording, the button now opens the reader's own
-// mail client with what they typed already in the body, addressed to the same
-// contact used on the landing page. The promise on the page becomes true, and
-// the message actually reaches someone.
+//   1. It answered a send with "Sent — thank you" and promised a reply within
+//      two days, while doing nothing with the text at all.
+//   2. It opened a mailto: link, which reached a human but stored nothing and
+//      assumed a configured mail client — not a safe assumption on a shared
+//      school machine, which is most of the machines Sprig runs on.
+//   3. It writes the message to help_messages, through a database function.
+//
+// The mailto: survives as a link in the prose rather than as the button,
+// because it is still the only route that can get a REPLY. That distinction is
+// the thing this copy has to get across, and it is why there is no reply
+// promise of any length attached to the button: a message sent from here is
+// anonymous by design, so Sprig has nowhere to reply to. Not "we aim to reply
+// in two days" — we cannot reply at all. Saying so is more useful than any
+// number would be.
 const CONTACT_EMAIL = "hello@sprig.study";
 
 function ContactBox() {
   const [msg, setMsg] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const openMailClient = () => {
-    if (msg.trim().length === 0) return;
-    const url = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(
-      "Sprig — a question",
-    )}&body=${encodeURIComponent(msg)}`;
-    window.location.assign(url);
+  const remaining = HELP_MESSAGE_MAX - msg.trim().length;
+
+  const send = async () => {
+    if (msg.trim().length === 0 || sending) return;
+    setSending(true);
+    setError(null);
+
+    const result = await submitHelpMessage(msg);
+
+    setSending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    // Clear only once the row has actually landed. Clearing optimistically
+    // would throw away what they wrote if the write failed — and this is a
+    // student who is already having a bad time with the app.
+    setMsg("");
+    setSent(true);
   };
+
+  if (sent) {
+    return (
+      <section className="mt-10 rounded-2xl border border-forest/30 bg-forest/5 p-7">
+        <div className="flex items-start gap-4">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-forest/15 text-forest">
+            <Check className="h-4 w-4" strokeWidth={2.5} />
+          </span>
+          <div>
+            <h2 className="font-display text-[24px] font-normal leading-[1.15] tracking-[-0.015em]">
+              Sent — and saved.
+            </h2>
+            <p className="mt-2 max-w-[62ch] text-[14.5px] leading-[1.7] text-muted-foreground">
+              Your message is written down and Artem reads them. There's no way
+              to reply to you here, though — this box doesn't know who you are.
+              So if you need an actual answer, email{" "}
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                className="text-forest underline underline-offset-4"
+              >
+                {CONTACT_EMAIL}
+              </a>{" "}
+              or ask your teacher.
+            </p>
+            <button
+              type="button"
+              onClick={() => setSent(false)}
+              className="mt-4 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground underline-offset-4 transition-colors hover:text-forest hover:underline"
+            >
+              Send another
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="mt-10 rounded-2xl border border-border bg-card/50 p-7">
@@ -163,35 +222,52 @@ function ContactBox() {
           Still confused, or need help?
         </h2>
         <span className="hidden font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground md:inline">
-          Opens your email app
+          Read, but not replied to
         </span>
       </div>
-      <p className="mt-2 text-[14.5px] leading-[1.65] text-muted-foreground">
-        Check the questions below, or write to us at{" "}
+      <p className="mt-2 max-w-[64ch] text-[14.5px] leading-[1.65] text-muted-foreground">
+        Send a note and it goes straight to Artem. He can't reply here — this
+        box doesn't know who you are — so if you need an answer back, email{" "}
         <a href={`mailto:${CONTACT_EMAIL}`} className="text-forest underline underline-offset-4">
           {CONTACT_EMAIL}
-        </a>
-        .
+        </a>{" "}
+        instead.
       </p>
       <div className="mt-5">
         <textarea
           value={msg}
           onChange={(e) => setMsg(e.target.value)}
           rows={4}
+          maxLength={HELP_MESSAGE_MAX}
           placeholder="Type your question or issue here…"
           className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-[14.5px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
         />
+
+        {/* The FAQ two sections below promises Sprig only ever sees a nickname.
+            A free-text box is exactly where that promise gets broken by a
+            13-year-old being helpful, so it is worth one line here. */}
+        <p className="mt-2.5 text-[12.5px] leading-[1.6] text-muted-foreground">
+          Please don't include your real name, school, or anything else personal
+          — it isn't needed, and Sprig would rather not have it.
+        </p>
+
+        {error && (
+          <p role="alert" className="mt-3 text-[13px] text-[color:var(--destructive)]">
+            {error}
+          </p>
+        )}
+
         <div className="mt-3 flex items-center justify-between gap-4">
           <span className="font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-            Nothing personal required
+            {remaining < 200 ? `${remaining} characters left` : "Nothing personal required"}
           </span>
           <button
-            onClick={openMailClient}
-            disabled={msg.trim().length === 0}
+            onClick={send}
+            disabled={msg.trim().length === 0 || sending}
             className="inline-flex items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-[13px] font-medium text-primary-foreground transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:translate-y-0"
           >
-            Send
-            <ArrowUpRight className="h-4 w-4" />
+            {sending ? "Sending…" : "Send"}
+            {!sending && <ArrowUpRight className="h-4 w-4" />}
           </button>
         </div>
       </div>
