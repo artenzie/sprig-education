@@ -23,7 +23,13 @@ export type Student = {
   nickname: string;
   current_tier: number;
   must_change_pin: boolean;
-  avatar_leaf: string | null;
+  // Independently nullable, and deliberately typed as plain strings rather
+  // than the union in leafAvatars.tsx: these arrive from the database, and
+  // typing a value as narrower than it can actually be is how a renamed
+  // avatar id turns into a crash instead of a fallback. The validators there
+  // narrow them at the point of use.
+  avatar_shape: string | null;
+  avatar_colour: string | null;
 };
 
 /**

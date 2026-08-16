@@ -6,7 +6,8 @@ import { MAX_LOGIN_ATTEMPTS, nicknameToEmail, nicknameToSlug } from "@/lib/stude
 import { AuthContext } from "./auth";
 import type { AuthStatus, Role, SignInResult, Student, Teacher } from "./auth";
 
-const STUDENT_COLUMNS = "id, nickname, current_tier, must_change_pin, avatar_leaf";
+const STUDENT_COLUMNS =
+  "id, nickname, current_tier, must_change_pin, avatar_shape, avatar_colour";
 const TEACHER_COLUMNS = "id, email, school_name";
 
 /** What the lockout functions in the database return. */

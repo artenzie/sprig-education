@@ -16,7 +16,14 @@ import { useAuth } from "@/context/auth";
 import type { Student } from "@/context/auth";
 import { nicknameInitials } from "@/lib/studentAuth";
 import { supabase } from "@/lib/supabase";
-import { LEAF_AVATARS, LeafAvatar, isLeafAvatarId } from "@/components/sprig/leafAvatars";
+import { LeafAvatar } from "@/components/sprig/leafAvatars";
+import {
+  LEAF_SHAPES,
+  LEAF_COLOURS,
+  colourToken,
+  isLeafShapeId,
+  DEFAULT_COLOUR,
+} from "@/lib/leafAvatars";
 
 export function TopNav() {
   const [notifOpen, setNotifOpen] = useState(false);
@@ -101,8 +108,12 @@ export function TopNav() {
                   }}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-forest/10 text-[13px] font-semibold text-forest transition-colors hover:bg-forest/15"
                 >
-                  {isLeafAvatarId(student.avatar_leaf) ? (
-                    <LeafAvatar id={student.avatar_leaf} className="h-9 w-9" />
+                  {isLeafShapeId(student.avatar_shape) ? (
+                    <LeafAvatar
+                      shape={student.avatar_shape}
+                      colour={student.avatar_colour}
+                      className="h-9 w-9"
+                    />
                   ) : (
                     nicknameInitials(student.nickname)
                   )}
@@ -199,16 +210,28 @@ function NotificationsPanel() {
 function ProfilePanel({ student, onClose }: { student: Student; onClose: () => void }) {
   const { signOut, refreshStudent } = useAuth();
   const navigate = useNavigate();
-  const [savingLeaf, setSavingLeaf] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  async function pickLeaf(id: string) {
-    if (savingLeaf) return;
-    setSavingLeaf(id);
+  /**
+   * Write one half of the avatar.
+   *
+   * Shape and colour are sent separately — the RPC coalesces a null argument
+   * against the stored value, so choosing a colour cannot blank out the shape.
+   * The alternative, sending both every time, would mean the picker had to
+   * carry a correct local copy of whatever is in the database; this way the
+   * database stays the only place the answer lives.
+   */
+  async function pick(shape: string | null, colour: string | null) {
+    if (saving) return;
+    setSaving(true);
     try {
-      const { error } = await supabase.rpc("set_avatar_leaf", { leaf: id });
+      const { error } = await supabase.rpc("set_avatar_leaf", {
+        p_shape: shape,
+        p_colour: colour,
+      });
       if (!error) await refreshStudent();
     } finally {
-      setSavingLeaf(null);
+      setSaving(false);
     }
   }
 
@@ -218,35 +241,82 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
   // student, not to us, not to anyone who gets hold of the database. The cost
   // is that a forgotten PIN has to be reset by a teacher instead of looked up.
   return (
-    <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[280px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
+    <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[316px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
       <div className="m-3 overflow-hidden rounded-lg border border-border/60 bg-secondary/60">
+        {/* Live preview. Shows the CURRENT pair, so changing either half is
+            visible here before it is visible in the nav behind the panel. */}
         <div className="flex h-20 items-center justify-center">
-          {isLeafAvatarId(student.avatar_leaf) ? (
-            <LeafAvatar id={student.avatar_leaf} className="h-14 w-14" />
+          {isLeafShapeId(student.avatar_shape) ? (
+            <LeafAvatar
+              shape={student.avatar_shape}
+              colour={student.avatar_colour}
+              className="h-14 w-14"
+            />
           ) : (
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-forest/15 font-display text-[22px] text-forest">
               {nicknameInitials(student.nickname)}
             </div>
           )}
         </div>
-        <div className="grid grid-cols-4 gap-1.5 border-t border-border/60 bg-background/60 p-2">
-          {LEAF_AVATARS.map((leaf) => (
-            <button
-              key={leaf.id}
-              type="button"
-              aria-label={`Use ${leaf.label} avatar`}
-              aria-pressed={student.avatar_leaf === leaf.id}
-              disabled={savingLeaf !== null}
-              onClick={() => pickLeaf(leaf.id)}
-              className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-60 ${
-                student.avatar_leaf === leaf.id
-                  ? "ring-2 ring-forest ring-offset-1 ring-offset-background"
-                  : "hover:bg-secondary"
-              }`}
-            >
-              <LeafAvatar id={leaf.id} className="h-8 w-8" />
-            </button>
-          ))}
+
+        <div className="border-t border-border/60 bg-background/60 p-3">
+          <div className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
+            Leaf
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-1.5">
+            {LEAF_SHAPES.map((shape) => (
+              <button
+                key={shape.id}
+                type="button"
+                title={shape.label}
+                aria-label={`Use the ${shape.label} leaf`}
+                aria-pressed={student.avatar_shape === shape.id}
+                disabled={saving}
+                // Each swatch previews the shape in the colour ALREADY chosen,
+                // so the grid shows eight versions of the student's own leaf
+                // rather than eight unrelated ones. Picking a shape then
+                // changes exactly the thing the button showed.
+                onClick={() => pick(shape.id, student.avatar_colour ?? DEFAULT_COLOUR)}
+                className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-60 ${
+                  student.avatar_shape === shape.id
+                    ? "ring-2 ring-forest ring-offset-1 ring-offset-background"
+                    : "hover:bg-secondary"
+                }`}
+              >
+                <LeafAvatar shape={shape.id} colour={student.avatar_colour} className="h-8 w-8" />
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
+            Colour
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {LEAF_COLOURS.map((colour) => (
+              <button
+                key={colour.id}
+                type="button"
+                title={colour.label}
+                aria-label={`Use ${colour.label}`}
+                aria-pressed={student.avatar_colour === colour.id}
+                disabled={saving}
+                onClick={() => pick(null, colour.id)}
+                className={`flex h-7 w-7 items-center justify-center rounded-full transition-transform disabled:opacity-60 ${
+                  student.avatar_colour === colour.id
+                    ? "ring-2 ring-forest ring-offset-1 ring-offset-background"
+                    : "hover:scale-110"
+                }`}
+              >
+                {/* The same ink contour the leaves get, for the same reason:
+                    a mint or sage swatch on a cream panel is otherwise a
+                    barely-visible disc. */}
+                <span
+                  className="h-5 w-5 rounded-full border border-ink/70"
+                  style={{ backgroundColor: colourToken(colour.id) }}
+                />
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       <div className="px-4 pb-4">
