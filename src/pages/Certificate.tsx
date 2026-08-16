@@ -1,17 +1,47 @@
-import { useState } from "react";
-import { Download, Printer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Printer, Lock } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
+import { useJourney } from "@/hooks/useJourney";
+import { TIER_NAME, toRoman } from "@/lib/journey";
+import {
+  deriveCertificate,
+  formatCertificateDate,
+  type CertificateState,
+} from "@/lib/certificate";
 
 const GOLD = "#D4A147";
 const FOREST = "#3F7A5C";
 
 function Certificate() {
-  const [name, setName] = useState("Amelia Kestrel");
-  const today = new Date().toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  // Students are anonymous — Sprig holds a nickname and nothing else — so the
+  // name is typed, not looked up. It starts empty rather than pre-filled with
+  // an invented "Amelia Kestrel", which was the page's most convincing lie:
+  // it made a stranger's finished certificate look like the student's own.
+  const [name, setName] = useState("");
+  const { journey, completions, loading } = useJourney();
+  const certificate = deriveCertificate(journey, completions);
+  const { earned } = certificate;
+
+  // Printing blank means printing the same card with the name suppressed, so
+  // it has to be rendered that way *before* the print dialog opens. Setting
+  // state and calling window.print() in the same handler would print the
+  // previous render — React has not committed yet — so the print is deferred
+  // to an effect that runs after the commit.
+  const [blank, setBlank] = useState(false);
+  const [printQueued, setPrintQueued] = useState(false);
+
+  useEffect(() => {
+    if (!printQueued) return;
+    window.print();
+    setPrintQueued(false);
+    setBlank(false);
+  }, [printQueued]);
+
+  function print(asBlank: boolean) {
+    if (!earned) return; // belt and braces; the buttons are disabled too
+    setBlank(asBlank);
+    setPrintQueued(true);
+  }
 
   return (
     <div className="relative min-h-screen bg-background text-foreground">
@@ -34,54 +64,109 @@ function Certificate() {
         </p>
       </section>
 
+      {/* ─────────────── REQUIREMENT ─────────────── */}
+      {!loading && !earned && (
+        <section className="mx-auto max-w-[1120px] px-10 pb-8">
+          <RequirementPanel certificate={certificate} />
+        </section>
+      )}
+
       {/* ─────────────── CERTIFICATE ─────────────── */}
       <section className="mx-auto max-w-[1120px] px-10 pb-16">
-        <CertificateCard name={name} date={today} />
+        <CertificateCard
+          name={blank ? "" : name}
+          date={formatCertificateDate(certificate.earnedOn)}
+          certificate={certificate}
+          loading={loading}
+        />
       </section>
 
       {/* ─────────────── ACTIONS ─────────────── */}
       <section className="mx-auto max-w-[1120px] px-10 pb-16">
         <div className="rounded-2xl border border-border bg-card/60 p-8">
-          <div className="grid gap-8 md:grid-cols-[1.2fr,1fr]">
+          {/* Underscore, not comma, between the track sizes. Tailwind v4 splits
+              arbitrary values on commas, so `[1.2fr,1fr]` compiles to nothing
+              and the two columns silently stack — which is what this panel has
+              been doing. Progress.tsx already uses the underscore form. */}
+          <div className="grid gap-8 md:grid-cols-[1.2fr_1fr]">
             <div>
               <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
                 Your name on it
               </div>
               <h3 className="mt-3 font-display text-[22px] tracking-tight text-ink">
-                Type it in, and it appears in script.
+                {earned
+                  ? "Type it in, and it appears in script."
+                  : "Not yet — but this is what's waiting."}
               </h3>
               <p className="mt-3 max-w-[440px] text-[14px] leading-[1.65] text-muted-foreground">
-                Change the name above and watch it re-render in the certificate
-                in a flowing Fraunces italic. Then download the PDF — or print
-                a blank version and fill your name in by hand.
+                {earned ? (
+                  <>
+                    Change the name above and watch it re-render in the
+                    certificate in a flowing Fraunces italic. Then save it as a
+                    PDF — or print a blank version and fill your name in by
+                    hand.
+                  </>
+                ) : (
+                  <>
+                    Saving and printing unlock once you've finished Essentials
+                    and one optional branch. Until then the certificate above is
+                    a preview, and it says so on its face — a keepsake for work
+                    that hasn't happened yet wouldn't be worth keeping.
+                  </>
+                )}
               </p>
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <button
-                  className="inline-flex items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-[13.5px] font-medium text-cream transition hover:bg-forest/90"
+                  type="button"
+                  onClick={() => print(false)}
+                  disabled={!earned}
+                  aria-disabled={!earned}
+                  title={earned ? undefined : "Finish Essentials and one optional branch first"}
+                  className="inline-flex items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-[13.5px] font-medium text-cream transition hover:bg-forest/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:bg-muted"
                 >
-                  <Download className="h-4 w-4" />
-                  Download PDF
+                  {earned ? <Download className="h-4 w-4" /> : <Lock className="h-3.5 w-3.5" />}
+                  Save as PDF
                 </button>
-                <button className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-[13px] text-muted-foreground transition hover:text-ink">
+                <button
+                  type="button"
+                  onClick={() => print(true)}
+                  disabled={!earned}
+                  aria-disabled={!earned}
+                  className="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-[13px] text-muted-foreground transition hover:text-ink disabled:cursor-not-allowed disabled:text-muted-foreground/50 disabled:hover:text-muted-foreground/50"
+                >
                   <Printer className="h-3.5 w-3.5" />
                   Print blank version
                 </button>
               </div>
+
+              {earned && (
+                <p className="mt-4 max-w-[440px] text-[12.5px] leading-[1.6] text-muted-foreground">
+                  Both open your browser's print dialog — choose your printer,
+                  or pick “Save as PDF” as the destination to keep a copy.
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="block font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
+              <label
+                htmlFor="certificate-name"
+                className="block font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground"
+              >
                 Name on certificate
               </label>
               <input
+                id="certificate-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Your name"
-                className="mt-3 w-full border-b border-border bg-transparent pb-2 font-display text-[22px] italic text-ink outline-none transition focus:border-forest"
+                disabled={!earned}
+                placeholder={earned ? "Your name" : "Locked until earned"}
+                className="mt-3 w-full border-b border-border bg-transparent pb-2 font-display text-[22px] italic text-ink outline-none transition focus:border-forest disabled:cursor-not-allowed disabled:text-muted-foreground/50"
               />
               <p className="mt-3 text-[12.5px] text-muted-foreground">
-                Rendered in Fraunces italic, exactly as it will appear.
+                {earned
+                  ? "Rendered in Fraunces italic, exactly as it will appear."
+                  : "Sprig never asks for your real name anywhere else — this stays in your browser and is never saved."}
               </p>
             </div>
           </div>
@@ -90,7 +175,7 @@ function Certificate() {
 
       {/* ─────────────── WHAT THIS MEANS ─────────────── */}
       <section className="mx-auto max-w-[1120px] px-10 pb-24">
-        <div className="grid gap-14 md:grid-cols-[1fr,1.2fr]">
+        <div className="grid gap-14 md:grid-cols-[1fr_1.2fr]">
           <div>
             <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
               What this means
@@ -131,12 +216,35 @@ function Certificate() {
 
 /* ══════════════════════════════════════════════════════════ */
 
-function CertificateCard({ name, date }: { name: string; date: string }) {
+/**
+ * The card itself, in one of two states.
+ *
+ * It is the *same* card either way — not a separate "locked" placeholder —
+ * because a student should be able to see exactly what they are working
+ * towards. What changes is that an unearned card is muted, watermarked, has no
+ * name on it, and lists progress rather than achievements. It is a preview
+ * that cannot be mistaken for the real thing, which is the whole requirement.
+ */
+function CertificateCard({
+  name,
+  date,
+  certificate,
+  loading,
+}: {
+  name: string;
+  date: string;
+  certificate: CertificateState;
+  loading: boolean;
+}) {
+  const { earned } = certificate;
+
   return (
-    <div className="relative">
+    <div id="certificate-sheet" className="relative">
       {/* Outer gold hairline */}
       <div
-        className="rounded-[6px] p-[1px]"
+        className={`rounded-[6px] p-[1px] transition-[filter,opacity] duration-500 ${
+          earned ? "" : "opacity-[0.62] grayscale-[0.55]"
+        }`}
         style={{ background: `linear-gradient(180deg, ${GOLD}, ${GOLD}55)` }}
       >
         {/* Paper */}
@@ -197,7 +305,9 @@ function CertificateCard({ name, date }: { name: string; date: string }) {
                 This certifies that
               </p>
 
-              {/* Name field */}
+              {/* Name field. Empty on an unearned card, and empty on a blank
+                  print — the same "Your name" placeholder covers both, because
+                  in both cases nobody has claimed this certificate yet. */}
               <div className="mx-auto mt-4 max-w-[520px]">
                 <div
                   className="pb-1 font-display text-[38px] italic leading-[1.1] text-ink"
@@ -217,14 +327,39 @@ function CertificateCard({ name, date }: { name: string; date: string }) {
               </p>
             </div>
 
-            {/* Tiers completed */}
+            {/* Tiers. Real ones when earned; real progress when not. The
+                hardcoded "I Essentials / III Mathematics" pair that used to
+                sit here was the second-most convincing lie on the page: it
+                named a tier the student may never have opened. */}
             <div className="mx-auto mt-10 max-w-[420px]">
               <div className="text-center font-mono text-[10px] uppercase tracking-[0.32em] text-muted-foreground">
-                Tiers completed
+                {earned ? "Tiers completed" : "Tiers in progress"}
               </div>
               <ul className="mt-4 space-y-2 text-[13.5px] text-ink/85">
-                <TierLine numeral="I" label="Essentials" />
-                <TierLine numeral="III" label="Mathematics" />
+                {loading ? (
+                  <li className="text-center font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+                    Loading…
+                  </li>
+                ) : earned ? (
+                  certificate.completedTiers.map((t) => (
+                    <TierLine
+                      key={t.tier}
+                      numeral={toRoman(t.tier)}
+                      label={TIER_NAME[t.tier] ?? `Tier ${t.tier}`}
+                      note="— complete"
+                    />
+                  ))
+                ) : (
+                  certificate.tiers.map((t) => (
+                    <TierLine
+                      key={t.tier}
+                      numeral={toRoman(t.tier)}
+                      label={TIER_NAME[t.tier] ?? `Tier ${t.tier}`}
+                      note={t.complete ? "— complete" : `${t.completed} of ${t.total}`}
+                      dim={!t.complete}
+                    />
+                  ))
+                )}
               </ul>
             </div>
 
@@ -264,15 +399,50 @@ function CertificateCard({ name, date }: { name: string; date: string }) {
               </div>
             </div>
           </div>
+
+          {/* Watermark. Sits inside the paper, above the content, and is the
+              one thing that makes a screenshot of this preview unusable as a
+              fake — the muting alone would survive a crop. `print-hide` is
+              belt and braces: the print buttons are disabled while it shows. */}
+          {!earned && !loading && (
+            <div
+              className="print-hide pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden"
+              aria-hidden
+            >
+              <span
+                className="-rotate-[18deg] whitespace-nowrap font-mono text-[clamp(28px,6vw,64px)] uppercase tracking-[0.3em]"
+                style={{ color: "rgba(34,41,31,0.09)" }}
+              >
+                Not yet earned
+              </span>
+            </div>
+          )}
         </div>
       </div>
+
+      {!earned && !loading && (
+        <div className="pointer-events-none absolute right-5 top-5 inline-flex items-center gap-2 rounded-full border border-border bg-background/95 px-3 py-1.5 font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
+          <Lock className="h-3 w-3" />
+          Preview
+        </div>
+      )}
     </div>
   );
 }
 
-function TierLine({ numeral, label }: { numeral: string; label: string }) {
+function TierLine({
+  numeral,
+  label,
+  note,
+  dim,
+}: {
+  numeral: string;
+  label: string;
+  note: string;
+  dim?: boolean;
+}) {
   return (
-    <li className="flex items-baseline gap-4">
+    <li className={`flex items-baseline gap-4 ${dim ? "opacity-55" : ""}`}>
       <span
         className="w-8 shrink-0 text-right font-display text-[13px] italic"
         style={{ color: GOLD }}
@@ -281,8 +451,91 @@ function TierLine({ numeral, label }: { numeral: string; label: string }) {
       </span>
       <span className="flex-1 border-b border-dotted border-border/80" />
       <span className="text-ink">{label}</span>
-      <span className="text-muted-foreground">— complete</span>
+      <span className="text-muted-foreground">{note}</span>
     </li>
+  );
+}
+
+/**
+ * What is actually left to do, in plain numbers.
+ *
+ * A greyed-out button with no explanation is the worst version of a gate: the
+ * student can see they are locked out but not why or how far off they are.
+ * This panel answers both, using the same counts the rule itself runs on.
+ */
+function RequirementPanel({ certificate }: { certificate: CertificateState }) {
+  const trunk = certificate.tiers.find((t) => t.tier === 1) ?? null;
+  const optional = certificate.tiers.filter((t) => t.tier !== 1);
+  // The nearest optional branch, so the encouragement points somewhere real
+  // rather than at whichever tier happens to sort first.
+  const closest = [...optional].sort(
+    (a, b) => b.completed / (b.total || 1) - a.completed / (a.total || 1),
+  )[0];
+
+  return (
+    <div className="rounded-2xl border border-border bg-card/40 p-8">
+      <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
+        <Lock className="h-3.5 w-3.5" />
+        <span>Not yet earned</span>
+      </div>
+
+      <h2 className="mt-4 max-w-[620px] font-display text-[26px] leading-[1.15] tracking-tight text-ink">
+        Two things unlock this certificate.
+      </h2>
+
+      <div className="mt-7 grid gap-5 sm:grid-cols-2">
+        <RequirementRow
+          label="Tier I — Essentials"
+          met={certificate.trunkComplete}
+          detail={trunk ? `${trunk.completed} of ${trunk.total} lessons done` : "No content yet"}
+        />
+        <RequirementRow
+          label="One optional branch"
+          met={optional.some((t) => t.complete)}
+          detail={
+            optional.some((t) => t.complete)
+              ? `${TIER_NAME[optional.find((t) => t.complete)!.tier]} complete`
+              : closest
+                ? `Closest: ${TIER_NAME[closest.tier] ?? `Tier ${closest.tier}`} — ${closest.completed} of ${closest.total}`
+                : "No content yet"
+          }
+        />
+      </div>
+
+      <p className="mt-7 max-w-[620px] text-[14px] leading-[1.65] text-muted-foreground">
+        Essentials is the trunk; Application, Mathematics and Mastery are the
+        three branches. Finish the trunk and any one branch and this page
+        unlocks — finish more and they're added to the certificate.
+      </p>
+    </div>
+  );
+}
+
+function RequirementRow({
+  label,
+  met,
+  detail,
+}: {
+  label: string;
+  met: boolean;
+  detail: string;
+}) {
+  return (
+    <div className="flex items-start gap-3">
+      <span
+        className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] ${
+          met ? "border-forest bg-forest text-cream" : "border-border text-muted-foreground/70"
+        }`}
+      >
+        {met ? "✓" : ""}
+      </span>
+      <div>
+        <div className={`text-[14.5px] ${met ? "text-ink" : "text-foreground/80"}`}>{label}</div>
+        <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          {detail}
+        </div>
+      </div>
+    </div>
   );
 }
 

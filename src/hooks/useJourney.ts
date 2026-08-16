@@ -12,11 +12,25 @@ import { deriveJourney, EMPTY_JOURNEY, type Journey, type RawTopic } from "@/lib
  * obvious which half is personal data. They're fired together with
  * Promise.all, so it costs one round trip either way.
  */
-export function useJourney(): { journey: Journey; loading: boolean; error: string | null; reload: () => void } {
+export function useJourney(): {
+  journey: Journey;
+  /**
+   * subtopic id -> when it was completed, for the completions this student
+   * has. Kept beside the journey rather than inside it because journey.ts is
+   * about unlock rules, and a timestamp changes none of them -- only the
+   * Certificate needs it, to date itself from the last real completion instead
+   * of from new Date().
+   */
+  completions: Map<string, string | null>;
+  loading: boolean;
+  error: string | null;
+  reload: () => void;
+} {
   const { student } = useAuth();
   const studentId = student?.id ?? null;
 
   const [journey, setJourney] = useState<Journey>(EMPTY_JOURNEY);
+  const [completions, setCompletions] = useState<Map<string, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Bumping this re-runs the effect. Used by reload() after a lesson writes a
@@ -42,7 +56,7 @@ export function useJourney(): { journey: Journey; loading: boolean; error: strin
         // this student. Filtering again in the client would be a comment, not
         // a control -- and would imply the safety came from the query.
         studentId
-          ? supabase.from("progress").select("subtopic_id").eq("status", "complete")
+          ? supabase.from("progress").select("subtopic_id,completed_at").eq("status", "complete")
           : Promise.resolve({ data: [], error: null }),
       ]);
 
@@ -59,10 +73,15 @@ export function useJourney(): { journey: Journey; loading: boolean; error: strin
         return;
       }
 
-      const completedIds = new Set(
-        (progressResult.data ?? []).map((row) => (row as { subtopic_id: string }).subtopic_id),
-      );
-      setJourney(deriveJourney((topicsResult.data ?? []) as RawTopic[], completedIds));
+      const rows = (progressResult.data ?? []) as {
+        subtopic_id: string;
+        completed_at: string | null;
+      }[];
+      const completedAt = new Map(rows.map((row) => [row.subtopic_id, row.completed_at]));
+      // The Set is derived from the Map's keys rather than mapped separately,
+      // so the two can never disagree about which subtopics are finished.
+      setCompletions(completedAt);
+      setJourney(deriveJourney((topicsResult.data ?? []) as RawTopic[], new Set(completedAt.keys())));
       setLoading(false);
     }
 
@@ -72,7 +91,7 @@ export function useJourney(): { journey: Journey; loading: boolean; error: strin
     };
   }, [studentId, nonce]);
 
-  return { journey, loading, error, reload };
+  return { journey, completions, loading, error, reload };
 }
 
 /**

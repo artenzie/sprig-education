@@ -124,3 +124,58 @@
 @utility sprig-glow {
   animation: sprig-pulse 2.6s ease-in-out infinite;
 }
+
+/* ---------------------------------------------------------------------------
+   Printing the certificate.
+
+   There is no PDF library in this project, and adding one to render a page we
+   already render perfectly well in HTML would be a lot of bundle for no gain.
+   The browser's own print pipeline produces the PDF instead ("Save as PDF" in
+   the print dialog), which also gives the student a genuine paper option --
+   the point of a keepsake.
+
+   The mechanic is `visibility`, not `display`. Hiding everything with
+   `display: none` and then un-hiding a deeply nested child does not work: a
+   display:none ancestor removes the whole subtree from the layout regardless
+   of what its descendants ask for. `visibility: hidden` is inherited but
+   *overridable* by a descendant, so "hide the world, then show this one card"
+   is a two-rule change.
+   --------------------------------------------------------------------------- */
+@media print {
+  html, body {
+    background: #fff;
+  }
+
+  /* Hide the world... */
+  body * {
+    visibility: hidden;
+  }
+
+  /* ...then bring back the certificate and everything inside it. */
+  #certificate-sheet,
+  #certificate-sheet * {
+    visibility: visible;
+  }
+
+  /* Lift the card out of the page flow so it prints at the top of the sheet
+     instead of wherever it happened to sit under the (now invisible) nav and
+     heading, which would otherwise leave a page of white space above it. */
+  #certificate-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    box-shadow: none;
+  }
+
+  /* Screen-only chrome that must never reach paper even when it sits inside
+     the sheet -- the locked-state watermark being the one that matters. */
+  .print-hide {
+    display: none !important;
+  }
+
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+}
