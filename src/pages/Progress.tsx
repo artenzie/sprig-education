@@ -66,6 +66,10 @@ function toGrowthPoints(attempts: TestAttemptRow[]): GrowthPoint[] {
         month: "short",
       }),
       score: attempt.score,
+      // Narrowed rather than cast: the filter above admits exactly these two
+      // values, but TestType has three, and `as` would keep compiling if a
+      // fourth test type were ever added to the filter by mistake.
+      kind: attempt.test_type === "baseline" ? ("baseline" as const) : ("growth_check" as const),
     }));
 }
 
