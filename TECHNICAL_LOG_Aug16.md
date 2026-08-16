@@ -342,9 +342,8 @@ gives a streak a real source at last — but one row per student is not a streak
 and the rule for what *breaks* one (weekends? half term?) is a pedagogical
 decision, not a coding one. XP still has no rule for what a subtopic is worth.
 
-**The Help contact box.** Yesterday's log flagged it as the highest priority of
-the five, because it promises "a real person reads every one" behind a button
-that stores nothing. It was not in today's scope and is still outstanding.
+**The Help contact box.** Was outstanding when this section was first written,
+and got done later the same day — see section 7.
 
 ---
 
@@ -410,3 +409,187 @@ The principle from yesterday's log holds: **when you want to know whether
 something handles your data, run it against your data.** Seeding a real account
 and looking at the real page found the Tailwind comma bug in ninety seconds; no
 amount of re-reading `deriveCertificate()` would have.
+
+---
+
+## 7. The Help contact box — the last one on the list
+
+Yesterday's log rated this the highest priority of the five known-incomplete
+items, for a reason none of the others had: it made a promise to a child asking
+for help. The other four looked unfinished. This one told a 13-year-old their
+message was on its way when it was not.
+
+### Three states, and why the middle one was not enough
+
+1. It answered a send with "Sent — thank you" and a promised reply within two
+   days, while doing nothing with the text at all.
+2. A fix after the debugging pass made the button open a `mailto:` link with
+   the typed text in the body. Better — it reached a human — but it stored
+   nothing, and it assumed a configured mail client. Sprig runs mostly on
+   shared school machines, where that assumption is often wrong and fails
+   *silently*: the button appears to work and nothing happens.
+3. Today: the message is written to `help_messages` through a database
+   function.
+
+The `mailto:` survives, but as a link in the prose rather than as the button.
+That demotion is the whole design, and it is explained under "The copy" below.
+
+### Why a function, and not an INSERT policy
+
+This is the part worth understanding properly, because the obvious solution is
+wrong in a way that is easy to miss.
+
+`/help` is a public route — it has to be, since a teacher evaluating Sprig and
+a student who *cannot get past the login screen* both need it, and the second
+of those is very plausibly why someone is writing in the first place. So any
+direct-table approach needs `grant insert on help_messages to anon`.
+
+The publishable key is in the client bundle. That is what "publishable" means;
+it is not a leak. But it means `grant insert to anon` is an unauthenticated
+write endpoint that anybody who views source can script against. An RLS policy
+could bound *who* writes (anyone, in this case) and nothing else — not what,
+not how much.
+
+A `security definer` function bounds all three, and it is the idiom this schema
+already uses everywhere the browser cannot be trusted with a decision:
+`record_failed_login()` (also granted to `anon`), `set_avatar_leaf()`,
+`complete_pin_change()`, the teacher tools. So `help_messages` has RLS on with
+**no policies and no grants at all** — unreachable from any browser in either
+direction — and `submit_help_message(p_message text)` is the only door.
+
+The single most important line in it:
+
+```sql
+v_sender uuid := auth.uid();
+```
+
+The client never supplies `student_id` and has no way to. Compare an INSERT
+policy, where the client sends the column and the policy can only check it
+afterwards. The test suite proves the difference: passing an extra
+`student_id` key to the RPC fails with *"Could not find the function
+public.submit_help_message(p_message, student_id)"* — it is rejected at the
+signature, before any logic runs.
+
+**Reads are nobody's.** Not students, not teachers — only the service role,
+which bypasses RLS, which is how these actually get read (a script or the
+dashboard; there is no inbox UI yet). A teacher being able to read one child's
+message about something upsetting is not a feature, it is a hazard.
+
+### The bug that writing it carefully caught
+
+`auth.uid()` is whoever is signed in — and that is **not necessarily a
+student.** Teachers are auth users too and can read `/help` like anyone else,
+and `help_messages.student_id` references `public.students`. Writing a
+teacher's uid straight in would have failed on the foreign key, so the first
+teacher to use the contact box would have got an error and no idea why.
+
+```sql
+if v_sender is not null
+   and not exists (select 1 from public.students where id = v_sender) then
+  v_sender := null;
+end if;
+```
+
+Falling back to anonymous rather than rejecting: their message is still worth
+having. The general lesson is worth keeping — **`auth.uid()` identifies an
+account, not a role.** Any code that assumes which table that id lives in
+should check.
+
+### Rate limiting, and an honest note about the second guard
+
+Two ceilings, both modelled on `teacher_action_budget_ok()`:
+
+- **Per student, 5/hour.** Well above someone with a real problem writing twice
+  because they thought of something else; well below anything worth calling a
+  flood.
+- **Globally, 60/hour.** This one needs stating plainly rather than burying:
+  anonymous senders have no identity to key a limit on, so the only lever left
+  is a total, which means **someone determined can trip it and take the form
+  away from honest students until the hour rolls forward.** It is a cost
+  circuit-breaker, not a spam filter. Sixty an hour against a pilot of roughly
+  ninety students is generous enough that normal use will never see it, which
+  is the only reason that trade is acceptable. If it ever fires in anger the
+  answer is not a bigger number — it is a captcha or a required sign-in, and
+  both have their own costs to a child who cannot log in.
+
+Plus a 2000-character bound, checked in the column constraint *and* in the
+function — the second one so an over-long message fails with a sentence a
+13-year-old can act on rather than a raw Postgres check-violation.
+
+### The copy
+
+The reply-time promise was never the real problem. The real problem is that
+**Sprig has nowhere to reply to.** A message from this box is anonymous by
+design; even for a signed-in student, Sprig holds a nickname and no address.
+So no reply promise of *any* duration is deliverable here — not "within two
+days", not "as soon as we can".
+
+Saying that plainly turned out to be more useful than any number:
+
+> Send a note and it goes straight to Artem. He can't reply here — this box
+> doesn't know who you are — so if you need an answer back, email
+> hello@sprig.study instead.
+
+That is why the `mailto:` stayed: it is still the only route that can get a
+*reply*. The button stores; the link replies; the copy says which is which.
+
+"A real person reads every one" stays in the page intro, on the explicit
+understanding that it depends on someone actually querying the table. It is a
+promise kept by a human habit, not by code, and it is worth writing that down
+somewhere — which is here.
+
+One line was added that nobody asked for:
+
+> Please don't include your real name, school, or anything else personal — it
+> isn't needed, and Sprig would rather not have it.
+
+Two sections below, the FAQ promises "Sprig only ever sees your nickname." A
+free-text box is exactly where a 13-year-old breaks that promise by being
+helpful. A privacy guarantee that the UI quietly invites you to violate is not
+a guarantee.
+
+### How it was tested
+
+Every path, through the **publishable key** — the same key and the same client
+the browser uses — rather than through the service role, which bypasses RLS and
+would have proved nothing about what a real visitor can do.
+
+```
+anon send                          ok
+anon send, blank                   REJECTED: Please write a message before sending.
+anon send, 2001 chars              REJECTED: That message is a bit too long...
+anon send, exactly 2000            ok
+anon direct SELECT                 REJECTED: permission denied for table help_messages
+anon direct INSERT                 REJECTED: permission denied for table help_messages
+anon rpc w/ extra student_id       REJECTED: Could not find the function ...(p_message, student_id)
+student send                       ok
+student send, 2001 chars           REJECTED: That message is a bit too long...
+student send #2..#5                ok
+student send #6                    REJECTED: You have sent a few messages already...
+teacher send                       ok
+```
+
+And what actually landed:
+
+```
+#1 student_id=null        "TEST-ANON: the compound interest slide does not load"
+#3 student_id=STUDENT-ID  "TEST-STUDENT: I cannot find the Growth Check on my p"
+#8 student_id=null        "TEST-TEACHER: how do I reset a PIN for a whole table"
+#9 student_id=null        "TEST-UI: the Buy Now Pay Later lesson stops loading..."
+```
+
+Row #8 is the teacher fallback working — a teacher id would have been a foreign
+key error, and a teacher id *stored* would have been the bug. Row #9 came
+through the actual browser on `/help` while logged out, which also confirmed
+the success state, and that "Send another" returns a clean empty form with Send
+disabled.
+
+Two boundary checks worth copying elsewhere: **2000 accepted and 2001
+rejected** proves the bound is inclusive rather than off by one, and the sixth
+message failing after five succeeded proves the rate limit counts what it
+claims to.
+
+Afterwards: all 9 rows deleted, and both scratch accounts (student `Careful
+Kestrel`, teacher `scratch-help-test@example.invalid`) removed by deleting the
+auth user and confirming the cascade. Back to 8 students and the two original
+teachers.
