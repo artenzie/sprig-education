@@ -1,7 +1,26 @@
 import { Link } from "react-router-dom";
 import { useState } from "react";
-import { ChevronDown, Play, Lock, ArrowUpRight } from "lucide-react";
+import { ChevronDown, Lock, ArrowUpRight, Film } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
+import { useJourney } from "@/hooks/useJourney";
+import { TIER_NAME, toRoman, type JourneyTopic } from "@/lib/journey";
+
+/**
+ * The Library — the same curriculum as the journey tree, flattened.
+ *
+ * This page used to run on a hardcoded TIERS array: twenty invented subtopic
+ * titles with hand-written `unlocked: true/false` flags, and every row linking
+ * to a bare `/lesson` that landed on whichever topic that route defaulted to.
+ * It told a brand-new student they had "4/5 unlocked" in Essentials and then
+ * dropped them into a lesson they had not reached. All of it is gone; the page
+ * now derives from the same useJourney() hook the tree and the Topic screen
+ * use, so there is exactly one place where unlock rules live.
+ *
+ * Video is the one thing still not real, and it is not real anywhere: every
+ * `topics.video_url` in all twenty seed migrations is null, because none have
+ * been recorded. So the video parts say so, rather than inventing a runtime
+ * and a Watch link.
+ */
 
 /* ---------- Icons ---------- */
 
@@ -55,94 +74,46 @@ function CrownIcon() {
   );
 }
 
-/* ---------- Data ---------- */
-
-type Sub = { title: string; unlocked: boolean };
-type Tier = {
-  id: string;
-  roman: string;
-  name: string;
-  tagline: string;
-  icon: React.ReactNode;
-  subs: Sub[];
+const TIER_ICON: Record<number, React.ReactNode> = {
+  1: <BookIcon />,
+  2: <WalletIcon />,
+  3: <CalculatorIcon />,
+  4: <CrownIcon />,
 };
 
-const TIERS: Tier[] = [
-  {
-    id: "essentials",
-    roman: "I",
-    name: "Essentials",
-    tagline: "The trunk — money as it really is",
-    icon: <BookIcon />,
-    subs: [
-      { title: "The Psychology of Spending", unlocked: true },
-      { title: "Where Money Really Comes From", unlocked: true },
-      { title: "Making Money Decisions With What You Have", unlocked: true },
-      { title: "How Banks and Money Actually Work", unlocked: true },
-      { title: "Setting a Goal That Actually Matters to You", unlocked: false },
-    ],
-  },
-  {
-    id: "application",
-    roman: "II",
-    name: "Application",
-    tagline: "Money in the wild",
-    icon: <WalletIcon />,
-    subs: [
-      { title: "Budgeting Basics", unlocked: false },
-      { title: "How Pricing Tricks You", unlocked: false },
-      { title: "Subscriptions & Recurring Costs", unlocked: false },
-      { title: "Buy Now Pay Later", unlocked: false },
-      { title: "Scams & Financial Safety", unlocked: false },
-    ],
-  },
-  {
-    id: "mathematics",
-    roman: "III",
-    name: "Mathematics",
-    tagline: "The numbers underneath",
-    icon: <CalculatorIcon />,
-    subs: [
-      { title: "Percentages in Real Life", unlocked: false },
-      { title: "Simple Interest", unlocked: false },
-      { title: "Compound Interest Intuitively", unlocked: false },
-      { title: "Inflation Basics", unlocked: false },
-      { title: "Why Some Choices Are Riskier Than Others", unlocked: false },
-    ],
-  },
-  {
-    id: "mastery",
-    roman: "IV",
-    name: "Mastery",
-    tagline: "Building your own tools",
-    icon: <CrownIcon />,
-    subs: [
-      { title: "Budget Calculator (Python)", unlocked: false },
-      { title: "The Real Compound Interest Formula", unlocked: false },
-      { title: "Present & Future Value", unlocked: false },
-      { title: "Behavioural Finance", unlocked: false },
-      { title: "Introduction to Crypto", unlocked: false },
-    ],
-  },
-];
-
-const VIDEOS = TIERS.flatMap((t) =>
-  t.subs.map((s, i) => ({
-    id: `${t.id}-${i}`,
-    title: s.title,
-    tier: t.name,
-    roman: t.roman,
-    unlocked: s.unlocked,
-    length: ["6m", "8m", "9m", "7m", "10m"][i],
-  })),
-);
-
-type TabId = "essentials" | "application" | "mathematics" | "mastery" | "videos";
+/** Editorial subtitles. Descriptive of the tier, not claims about progress. */
+const TIER_TAGLINE: Record<number, string> = {
+  1: "The trunk — money as it really is",
+  2: "Money in the wild",
+  3: "The numbers underneath",
+  4: "Building your own tools",
+};
 
 /* ---------- Page ---------- */
 
 function Library() {
-  const [tab, setTab] = useState<TabId>("essentials");
+  const { journey, loading } = useJourney();
+  const [tab, setTab] = useState<number | "videos">(1);
+
+  // Tiers that actually exist in the database, in order. Derived rather than
+  // listed, so a fifth tier (or a tier pulled for rewriting) needs no edit here.
+  const tiers = [...new Set(journey.topics.map((t) => t.tier))].sort((a, b) => a - b);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <main className="mx-auto max-w-[1080px] px-8 pb-24 pt-10">
+          <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+            Loading the library…
+          </p>
+        </main>
+      </div>
+    );
+  }
+
+  const activeTierTopics =
+    tab === "videos" ? [] : journey.topics.filter((t) => t.tier === tab);
 
   return (
     <div className="min-h-screen bg-background">
@@ -156,26 +127,30 @@ function Library() {
             Every lesson, in a straight line.
           </h1>
           <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-muted-foreground">
-            The same topics as your journey — just easier to scan. Unlocked
-            lessons open straight into the video; locked ones are still visible
-            so you can see what's coming.
+            The same lessons as your journey — just easier to scan. Unlocked
+            ones open where you left off; locked ones stay visible so you can
+            see what's coming.
           </p>
         </header>
 
         {/* Tabs */}
         <div className="mb-10 flex flex-wrap items-center gap-1 border-b border-border/70">
-          <TabButton active={tab === "essentials"} onClick={() => setTab("essentials")} label="Essentials" />
-          <TabButton active={tab === "application"} onClick={() => setTab("application")} label="Application" />
-          <TabButton active={tab === "mathematics"} onClick={() => setTab("mathematics")} label="Mathematics" />
-          <TabButton active={tab === "mastery"} onClick={() => setTab("mastery")} label="Mastery" />
+          {tiers.map((tier) => (
+            <TabButton
+              key={tier}
+              active={tab === tier}
+              onClick={() => setTab(tier)}
+              label={TIER_NAME[tier] ?? `Tier ${tier}`}
+            />
+          ))}
           <span className="mx-2 h-4 w-px bg-border/70" />
           <TabButton active={tab === "videos"} onClick={() => setTab("videos")} label="Videos" />
         </div>
 
         {tab === "videos" ? (
-          <VideosList />
+          <VideosList topics={journey.topics} />
         ) : (
-          <TierList tier={TIERS.find((t) => t.id === tab)!} />
+          <TierSection tier={tab} topics={activeTierTopics} />
         )}
       </main>
     </div>
@@ -195,24 +170,34 @@ function TabButton({
     <button
       onClick={onClick}
       className={`relative -mb-px px-3 py-2.5 text-[13.5px] transition-colors ${
-        active
-          ? "text-forest"
-          : "text-muted-foreground hover:text-foreground"
+        active ? "text-forest" : "text-muted-foreground hover:text-foreground"
       }`}
     >
       {label}
-      {active && (
-        <span className="absolute inset-x-2 -bottom-px h-[1.5px] bg-forest" />
-      )}
+      {active && <span className="absolute inset-x-2 -bottom-px h-[1.5px] bg-forest" />}
     </button>
   );
 }
 
-/* ---------- Tier View ---------- */
+/* ---------- Tier view ---------- */
 
-function TierList({ tier }: { tier: Tier }) {
+function TierSection({ tier, topics }: { tier: number; topics: JourneyTopic[] }) {
   const [open, setOpen] = useState(true);
-  const unlockedCount = tier.subs.filter((s) => s.unlocked).length;
+
+  const subtopics = topics.flatMap((t) => t.subtopics);
+  // "Unlocked" here means "you could open it right now" — complete or
+  // available. That is the honest reading of the word, and it is computed from
+  // the same statuses the Topic page draws its padlocks from.
+  const unlockedCount = subtopics.filter((s) => s.status !== "locked").length;
+  const completedCount = subtopics.filter((s) => s.status === "complete").length;
+
+  if (topics.length === 0) {
+    return (
+      <p className="py-10 text-[14.5px] text-muted-foreground">
+        No lessons have been written for this tier yet.
+      </p>
+    );
+  }
 
   return (
     <section>
@@ -221,19 +206,20 @@ function TierList({ tier }: { tier: Tier }) {
         className="flex w-full items-center gap-4 border-b border-border/70 py-5 text-left"
       >
         <span className="flex h-10 w-10 items-center justify-center rounded-full border border-border/70 text-forest">
-          {tier.icon}
+          {TIER_ICON[tier]}
         </span>
         <div className="flex-1">
           <div className="flex items-baseline gap-3">
             <span className="font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-              Tier {tier.roman}
+              Tier {toRoman(tier)}
             </span>
             <h2 className="font-display text-[24px] tracking-tight text-ink">
-              {tier.name}
+              {TIER_NAME[tier] ?? `Tier ${tier}`}
             </h2>
           </div>
           <p className="mt-0.5 text-[13.5px] text-muted-foreground">
-            {tier.tagline} · {unlockedCount}/{tier.subs.length} unlocked
+            {TIER_TAGLINE[tier]} · {unlockedCount}/{subtopics.length} unlocked ·{" "}
+            {completedCount} done
           </p>
         </div>
         <ChevronDown
@@ -244,41 +230,55 @@ function TierList({ tier }: { tier: Tier }) {
       </button>
 
       {open && (
-        <ol className="mt-2">
-          {tier.subs.map((sub, i) => (
-            <SubRow key={i} index={i + 1} sub={sub} roman={tier.roman} />
+        <div className="mt-2">
+          {topics.map((topic) => (
+            <div key={topic.id} className="mb-8">
+              <div className="flex items-baseline gap-3 border-b border-border/40 pb-2">
+                <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+                  {toRoman(topic.tier)}.{toRoman(topic.order)}
+                </span>
+                <Link
+                  to={`/topic/${topic.id}`}
+                  className="text-[15px] text-ink transition-colors hover:text-forest"
+                >
+                  {topic.title}
+                </Link>
+              </div>
+              <ol>
+                {topic.subtopics.map((sub) => (
+                  <SubRow key={sub.id} topic={topic} sub={sub} />
+                ))}
+              </ol>
+            </div>
           ))}
-        </ol>
+        </div>
       )}
     </section>
   );
 }
 
 function SubRow({
-  index,
+  topic,
   sub,
-  roman,
 }: {
-  index: number;
-  sub: Sub;
-  roman: string;
+  topic: JourneyTopic;
+  sub: JourneyTopic["subtopics"][number];
 }) {
+  const locked = sub.status === "locked";
+  const roman = `${toRoman(topic.tier)}.${toRoman(topic.order)}.${toRoman(sub.order)}`;
+
   const label = (
     <>
-      <span className="w-14 font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-        {roman}.{index}
+      <span className="w-20 shrink-0 font-mono text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+        {roman}
       </span>
-      <span
-        className={`flex-1 text-[15.5px] ${
-          sub.unlocked ? "text-ink" : "text-muted-foreground/60"
-        }`}
-      >
+      <span className={`flex-1 text-[15.5px] ${locked ? "text-muted-foreground/60" : "text-ink"}`}>
         {sub.title}
       </span>
     </>
   );
 
-  if (!sub.unlocked) {
+  if (locked) {
     return (
       <li className="flex cursor-not-allowed items-center gap-4 border-b border-border/50 py-4 opacity-70">
         {label}
@@ -292,11 +292,18 @@ function SubRow({
 
   return (
     <li>
+      {/* The exact link the Topic page uses. A bare /lesson (what this used to
+          be) has no idea which subtopic it is meant to show. */}
       <Link
-        to="/lesson"
+        to={`/lesson?topic=${topic.id}&subtopic=${sub.id}`}
         className="group flex items-center gap-4 border-b border-border/60 py-4 transition-colors hover:bg-forest/5"
       >
         {label}
+        {sub.status === "complete" && (
+          <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-forest/80">
+            Done
+          </span>
+        )}
         <span className="inline-flex items-center gap-1 text-[12.5px] text-forest opacity-0 transition-opacity group-hover:opacity-100">
           Open
           <ArrowUpRight className="h-3.5 w-3.5" />
@@ -306,68 +313,86 @@ function SubRow({
   );
 }
 
-/* ---------- Videos View ---------- */
+/* ---------- Videos view ---------- */
 
-function VideosList() {
+/**
+ * Videos are topic-level (Lesson.tsx opens a topic with one video, then works
+ * through that topic's subtopics), so this lists topics, not subtopics — the
+ * old version listed twenty per-subtopic videos that were never planned to
+ * exist, each with an invented runtime from a five-item array.
+ *
+ * None are recorded. Rather than hide the tab, it shows the real running
+ * order with an honest state on each row: this is what is coming, and a
+ * student can still open the written lesson today.
+ */
+function VideosList({ topics }: { topics: JourneyTopic[] }) {
+  const withContent = topics.filter((t) => t.hasContent);
+
   return (
     <section>
-      <div className="mb-4 flex items-baseline justify-between">
-        <h2 className="font-display text-[22px] tracking-tight text-ink">
-          All videos
-        </h2>
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
+        <h2 className="font-display text-[22px] tracking-tight text-ink">All videos</h2>
         <span className="text-[12.5px] text-muted-foreground">
-          {VIDEOS.length} in total · {VIDEOS.filter((v) => v.unlocked).length}{" "}
-          available now
+          {withContent.length} planned · none recorded yet
         </span>
       </div>
+
+      <div className="mb-8 rounded-xl border border-border/70 bg-card/40 px-5 py-4">
+        <p className="text-[14px] leading-[1.6] text-muted-foreground">
+          The videos are still being made. Every lesson below is fully readable
+          without one — the slides and questions are the lesson; the video is a
+          short introduction to the topic that will be added on top.
+        </p>
+      </div>
+
       <ul>
-        {VIDEOS.map((v) => (
-          <VideoRow key={v.id} video={v} />
+        {withContent.map((topic) => (
+          <VideoRow key={topic.id} topic={topic} />
         ))}
       </ul>
     </section>
   );
 }
 
-function VideoRow({
-  video,
-}: {
-  video: (typeof VIDEOS)[number];
-}) {
+function VideoRow({ topic }: { topic: JourneyTopic }) {
+  const locked = topic.status === "locked";
+
   const inner = (
     <>
-      <VideoThumb unlocked={video.unlocked} />
-      <div className="flex-1">
-        <p
-          className={`text-[15px] ${
-            video.unlocked ? "text-ink" : "text-muted-foreground/60"
-          }`}
-        >
-          {video.title}
+      <VideoThumb />
+      <div className="min-w-0 flex-1">
+        <p className={`text-[15px] ${locked ? "text-muted-foreground/60" : "text-ink"}`}>
+          {topic.title}
         </p>
         <p className="mt-0.5 font-mono text-[10.5px] uppercase tracking-[0.2em] text-muted-foreground">
-          Tier {video.roman} · {video.tier} · {video.length}
+          {toRoman(topic.tier)}.{toRoman(topic.order)} · {TIER_NAME[topic.tier] ?? `Tier ${topic.tier}`}
         </p>
       </div>
-      {video.unlocked ? (
-        <span className="text-[12.5px] text-forest">Watch</span>
+      <span className="shrink-0 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground/80">
+        Not recorded yet
+      </span>
+      {locked ? (
+        <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
       ) : (
-        <Lock className="h-3.5 w-3.5 text-muted-foreground/70" />
+        <span className="shrink-0 text-[12.5px] text-forest">Read it</span>
       )}
     </>
   );
 
-  if (!video.unlocked) {
+  // Locked stays locked even though there is no video to protect — the lock is
+  // about the lesson behind the row, and it has to agree with the tree.
+  if (locked) {
     return (
       <li className="flex cursor-not-allowed items-center gap-4 border-b border-border/60 py-3 opacity-70">
         {inner}
       </li>
     );
   }
+
   return (
     <li>
       <Link
-        to="/lesson"
+        to={`/topic/${topic.id}`}
         className="flex items-center gap-4 border-b border-border/60 py-3 transition-colors hover:bg-forest/5"
       >
         {inner}
@@ -376,32 +401,25 @@ function VideoRow({
   );
 }
 
-function VideoThumb({ unlocked }: { unlocked: boolean }) {
+/**
+ * The placeholder thumbnail. Deliberately the same for every row and visibly
+ * empty — a play button here would promise something no row can deliver.
+ */
+function VideoThumb() {
   return (
-    <div
-      className={`relative flex h-14 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-[3px] border ${
-        unlocked
-          ? "border-border/70 bg-forest/10"
-          : "border-border/60 bg-muted/40"
-      }`}
-    >
-      {/* botanical silhouette */}
-      <svg
-        viewBox="0 0 96 56"
-        className="absolute inset-0 h-full w-full"
-        aria-hidden
-      >
+    <div className="relative flex h-14 w-24 flex-shrink-0 items-center justify-center overflow-hidden rounded-[3px] border border-dashed border-border/70 bg-muted/30">
+      <svg viewBox="0 0 96 56" className="absolute inset-0 h-full w-full" aria-hidden>
         <path
           d="M0 46 C 20 40, 30 44, 48 38 S 78 32, 96 36 L 96 56 L 0 56 Z"
-          fill={unlocked ? "var(--forest)" : "var(--muted-foreground)"}
-          opacity="0.12"
+          fill="var(--muted-foreground)"
+          opacity="0.1"
         />
         <path
           d="M18 46 C 22 34, 30 30, 30 22"
-          stroke={unlocked ? "var(--forest)" : "var(--muted-foreground)"}
+          stroke="var(--muted-foreground)"
           strokeWidth="1"
           fill="none"
-          opacity="0.5"
+          opacity="0.4"
         />
         <ellipse
           cx="30"
@@ -409,16 +427,12 @@ function VideoThumb({ unlocked }: { unlocked: boolean }) {
           rx="3"
           ry="1.4"
           transform="rotate(-30 30 21)"
-          fill={unlocked ? "var(--forest)" : "var(--muted-foreground)"}
-          opacity="0.55"
+          fill="var(--muted-foreground)"
+          opacity="0.45"
         />
       </svg>
-      <span
-        className={`relative flex h-7 w-7 items-center justify-center rounded-full ${
-          unlocked ? "bg-background text-forest" : "bg-background/70 text-muted-foreground"
-        }`}
-      >
-        {unlocked ? <Play className="h-3 w-3" fill="currentColor" /> : <Lock className="h-3 w-3" />}
+      <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-background/70 text-muted-foreground/70">
+        <Film className="h-3 w-3" />
       </span>
     </div>
   );
