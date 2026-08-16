@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-
-type Mood = "sad" | "meh" | "happy";
+import type { DailyCheckinInput, Mood } from "@/hooks/useDailyCheckin";
 
 export function CheckInModal({
   open,
   onClose,
+  onSubmit,
 }: {
   open: boolean;
   onClose: () => void;
+  onSubmit: (input: DailyCheckinInput) => Promise<{ ok: true } | { ok: false; message: string }>;
 }) {
   const [mood, setMood] = useState<Mood | null>(null);
   const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
@@ -33,6 +36,7 @@ export function CheckInModal({
       const t = setTimeout(() => {
         setMood(null);
         setNote("");
+        setError(null);
         setSubmitted(false);
       }, 200);
       return () => clearTimeout(t);
@@ -41,8 +45,23 @@ export function CheckInModal({
 
   if (!open) return null;
 
-  const handleSubmit = () => {
+  const canSubmit = mood !== null && !submitting;
+
+  // The "Noted — thank you" screen used to show unconditionally, one setState
+  // after the click. It now waits for the row to actually land, because a
+  // thank-you for something that was never saved is worse than an error.
+  const handleSubmit = async () => {
     if (!mood) return;
+    setSubmitting(true);
+    setError(null);
+
+    const result = await onSubmit({ mood, note });
+
+    setSubmitting(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
     setSubmitted(true);
     setTimeout(onClose, 900);
   };
@@ -109,6 +128,12 @@ export function CheckInModal({
               />
             </div>
 
+            {error && (
+              <p role="alert" className="mt-4 text-[13px] text-[color:var(--destructive)]">
+                {error}
+              </p>
+            )}
+
             <div className="mt-6 flex items-center justify-between gap-4">
               <button
                 type="button"
@@ -120,10 +145,10 @@ export function CheckInModal({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={!mood}
+                disabled={!canSubmit}
                 className="inline-flex items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-[13px] font-medium text-primary-foreground transition-transform hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground disabled:hover:translate-y-0"
               >
-                Submit
+                {submitting ? "Saving…" : "Submit"}
               </button>
             </div>
           </>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, Check } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 
 import { CheckInModal } from "@/components/sprig/CheckInModal";
@@ -8,6 +8,7 @@ import { WeeklyCheckInModal } from "@/components/sprig/WeeklyCheckInModal";
 import { JourneyTree } from "@/components/sprig/JourneyTree";
 import { useJourney } from "@/hooks/useJourney";
 import { useWeeklyCheckin } from "@/hooks/useWeeklyCheckin";
+import { useDailyCheckin } from "@/hooks/useDailyCheckin";
 import { TIER_NAME, toRoman } from "@/lib/journey";
 
 function Dashboard() {
@@ -16,6 +17,7 @@ function Dashboard() {
   const navigate = useNavigate();
   const { journey, loading } = useJourney();
   const { dueThisWeek, loading: weeklyLoading, submit: submitWeeklyCheckin } = useWeeklyCheckin();
+  const { dueToday, loading: dailyLoading, submit: submitDailyCheckin } = useDailyCheckin();
 
   const { percentComplete, currentTopic, nextUp } = journey;
 
@@ -45,14 +47,30 @@ function Dashboard() {
               {loading ? "—" : `${percentComplete}%`}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setCheckInOpen(true)}
-            className="group inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3.5 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest/50 hover:text-forest"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-forest" />
-            How did today go?
-          </button>
+          {/* Three states, not two. While the row lookup is in flight the
+              button is neither shown nor hidden — a prompt that appears and
+              then vanishes a beat later reads as a glitch, and the student may
+              have clicked it already. */}
+          {dailyLoading ? (
+            <span className="inline-flex items-center gap-2 rounded-full border border-border/40 px-3.5 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground/50">
+              <span className="h-1.5 w-1.5 rounded-full bg-border" />
+              Check-in
+            </span>
+          ) : dueToday ? (
+            <button
+              type="button"
+              onClick={() => setCheckInOpen(true)}
+              className="group inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3.5 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest/50 hover:text-forest"
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-forest" />
+              How did today go?
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-2 rounded-full border border-forest/25 bg-forest/5 px-3.5 py-1.5 font-mono text-[10.5px] uppercase tracking-[0.22em] text-forest/80">
+              <Check className="h-3 w-3" strokeWidth={2.5} />
+              Checked in today
+            </span>
+          )}
 
         </div>
       </div>
@@ -83,8 +101,11 @@ function Dashboard() {
 
             {/* Editorial stats.
                 Streak and Experience used to sit here on hardcoded values (12
-                days, 2,480 xp). Both are gone rather than faked: a streak needs
-                daily_checkins, which nothing writes to yet, and XP has no rule
+                days, 2,480 xp). Both are still gone rather than faked. The
+                daily check-in now writes real rows, so a streak has a source at
+                last — but one row per student so far is not a streak, and the
+                rule for what breaks one (weekends? term holidays?) is a
+                pedagogical decision, not a coding one. XP still has no rule
                 defining what a subtopic is worth. They come back when there is
                 something real behind them. */}
             <dl className="mt-8 grid grid-cols-2 gap-y-7">
@@ -164,7 +185,11 @@ function Dashboard() {
         </div>
       </footer>
 
-      <CheckInModal open={checkInOpen} onClose={() => setCheckInOpen(false)} />
+      <CheckInModal
+        open={checkInOpen}
+        onClose={() => setCheckInOpen(false)}
+        onSubmit={submitDailyCheckin}
+      />
       <WeeklyCheckInModal
         open={weeklyCheckInOpen}
         onClose={() => setWeeklyCheckInOpen(false)}
