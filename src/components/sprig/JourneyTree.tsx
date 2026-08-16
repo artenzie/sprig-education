@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, Lock } from "lucide-react";
 import type { Journey, TopicStatus } from "@/lib/journey";
@@ -233,6 +234,107 @@ function Leaf({ cx, cy, rot, s = 1, grown }: LeafSpec) {
   );
 }
 
+// --- Milestone headers -------------------------------------------------------
+
+type MilestoneHeader = {
+  x: number;
+  y: number;
+  label: string;
+  anchor: "middle" | "end";
+};
+
+const MILESTONE_FONT_SIZE = 44;
+
+const MILESTONE_HEADERS: MilestoneHeader[] = [
+  { x: 240,  y: 225,  label: "Application", anchor: "middle" },
+  { x: 1014, y: 225,  label: "Mathematics", anchor: "middle" },
+  { x: 1705, y: 225,  label: "Mastery",     anchor: "middle" },
+  // "Essentials" is the only header set beside its subject rather than above
+  // it, so it is the only one that can collide with anything. The trunk's left
+  // edge sits at x≈983 at this height; ending the label at 800 leaves a gap of
+  // ~180 units, roughly four times the one the canopy headers enjoy by virtue
+  // of floating in clear space above the tree.
+  { x: 800,  y: 1720, label: "Essentials",  anchor: "end" },
+];
+
+/**
+ * A tier name with a rule under it, drawn to the width of the actual glyphs.
+ *
+ * The rule used to be sized as `label.length * (fontSize * 0.34)` -- a guess at
+ * the average character width. It was wrong in both directions at once: too
+ * short overall, so the rule stopped short of the last letter, and wrong by a
+ * DIFFERENT amount per label, because "Mastery" (7 characters) and
+ * "Mathematics" (11) are not in a 7:11 width ratio in a proportional italic
+ * serif. A rule that is supposed to run first-letter-to-last cannot be derived
+ * from a character count.
+ *
+ * So measure it instead. getBBox() on the rendered <text> returns its tight
+ * bounding box in viewBox units, which is exactly the span wanted, and stays
+ * right if a label is ever renamed or the font is ever changed.
+ *
+ * THE SUBTLETY IS THE FONT. Fraunces arrives over the network, and the first
+ * paint happens in the fallback serif -- so a single measurement on mount
+ * records the width of the WRONG typeface and leaves the rule mis-sized for
+ * the life of the page. document.fonts.ready re-measures once the real font has
+ * landed. Until the first measurement completes the rule is not drawn at all,
+ * rather than drawn at a wrong length and corrected a frame later.
+ */
+function MilestoneHeader({ x, y, label, anchor }: MilestoneHeader) {
+  const textRef = useRef<SVGTextElement | null>(null);
+  const [width, setWidth] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    let cancelled = false;
+
+    const measure = () => {
+      if (cancelled || !textRef.current) return;
+      setWidth(textRef.current.getBBox().width);
+    };
+
+    measure();
+    // Optional-chained: document.fonts is absent in jsdom and older Safari,
+    // where the mount-time measurement is simply the final one.
+    void document.fonts?.ready.then(measure);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [label]);
+
+  const x1 = width === null ? 0 : anchor === "end" ? x - width : x - width / 2;
+  const x2 = width === null ? 0 : anchor === "end" ? x : x + width / 2;
+
+  return (
+    <g>
+      <text
+        ref={textRef}
+        x={x}
+        y={y}
+        textAnchor={anchor}
+        fill="#2C4A38"
+        fontFamily="var(--font-display, 'Fraunces', serif)"
+        fontStyle="italic"
+        fontSize={MILESTONE_FONT_SIZE}
+        fontWeight={400}
+        letterSpacing="-0.5"
+      >
+        {label}
+      </text>
+      {width !== null && (
+        <line
+          x1={x1}
+          x2={x2}
+          y1={y + 12}
+          y2={y + 12}
+          stroke="#2C4A38"
+          strokeWidth={1.2}
+          opacity={0.6}
+        />
+      )}
+    </g>
+  );
+}
+
 // --- Main --------------------------------------------------------------------
 
 /**
@@ -310,43 +412,9 @@ export function JourneyTree({ journey }: { journey: Journey }) {
         {LEAVES_FALLEN.map((l, i) => <Leaf key={`f${i}`} {...l} />)}
 
         {/* Milestone headers — Essentials beside the trunk I circle; Application/Mathematics/Mastery on a shared baseline high above the canopy circles */}
-        {[
-          { x: 240,  y: 225,  label: "Application", anchor: "middle" as const },
-          { x: 1014, y: 225,  label: "Mathematics", anchor: "middle" as const },
-          { x: 1705, y: 225,  label: "Mastery",     anchor: "middle" as const },
-          { x: 880,  y: 1720, label: "Essentials",  anchor: "end"    as const },
-        ].map(({ x, y, label, anchor }) => {
-          const fontSize = 44;
-          const w = label.length * (fontSize * 0.34);
-          const x1 = anchor === "end" ? x - w : x - w / 2;
-          const x2 = anchor === "end" ? x     : x + w / 2;
-          return (
-            <g key={label}>
-              <text
-                x={x}
-                y={y}
-                textAnchor={anchor}
-                fill="#2C4A38"
-                fontFamily="var(--font-display, 'Fraunces', serif)"
-                fontStyle="italic"
-                fontSize={fontSize}
-                fontWeight={400}
-                letterSpacing="-0.5"
-              >
-                {label}
-              </text>
-              <line
-                x1={x1}
-                x2={x2}
-                y1={y + 12}
-                y2={y + 12}
-                stroke="#2C4A38"
-                strokeWidth={1.2}
-                opacity={0.6}
-              />
-            </g>
-          );
-        })}
+        {MILESTONE_HEADERS.map((header) => (
+          <MilestoneHeader key={header.label} {...header} />
+        ))}
       </svg>
 
       {/* Node overlay */}
