@@ -134,38 +134,112 @@
    the print dialog), which also gives the student a genuine paper option --
    the point of a keepsake.
 
-   The mechanic is `visibility`, not `display`. Hiding everything with
-   `display: none` and then un-hiding a deeply nested child does not work: a
-   display:none ancestor removes the whole subtree from the layout regardless
-   of what its descendants ask for. `visibility: hidden` is inherited but
-   *overridable* by a descendant, so "hide the world, then show this one card"
-   is a two-rule change.
+   WHY THIS IS NOT THE OBVIOUS `visibility: hidden` TRICK.
+
+   The first version of this block hid the page with `body * { visibility:
+   hidden }` and then re-showed `#certificate-sheet`. That is the standard
+   recipe, and it is chosen because `display: none` on an ancestor removes the
+   whole subtree from layout regardless of what its descendants ask for,
+   whereas `visibility` is inherited but *overridable* by a descendant.
+
+   It also printed three pages, and the reason is the same property that makes
+   it work: `visibility: hidden` hides an element WITHOUT REMOVING IT FROM
+   LAYOUT. The nav, the page heading and the actions column were invisible but
+   still occupied their full height, so the document stayed as tall as the
+   whole screen page -- one sheet of certificate followed by two sheets of
+   very carefully rendered white.
+
+   So the hiding is done with `display: none` after all, and the ancestor
+   problem is solved directly: before printing, Certificate.tsx walks up from
+   the sheet tagging each ancestor with `data-cert-print-ancestor`, and tags
+   the body with `data-cert-printing`. The rules below then hide every child
+   that is neither an ancestor of the sheet nor the sheet itself. The document
+   collapses to exactly the height of the card.
+
+   (`:has()` would express this in pure CSS with no JS at all. It is avoided
+   deliberately: an older browser does not merely ignore an unsupported
+   `:has()` rule, it discards the whole selector -- which here would mean
+   printing the entire application UI. The attribute selectors below work
+   everywhere, and the JS that sets them is already running.)
+
+   FITTING ONE PAGE. The second failure was scale. The sheet was set to
+   `width: 100%`, which in print resolves against the page box rather than the
+   ~600px column it occupies on screen, so the card was stretched to the full
+   printable width and then overflowed the 186mm of available height. The card
+   is now laid out at a fixed width and scaled down to fit, with the factor
+   measured at print time -- see the print effect in Certificate.tsx.
    --------------------------------------------------------------------------- */
 @media print {
   html, body {
     background: #fff;
   }
 
-  /* Hide the world... */
-  body * {
-    visibility: hidden;
+  /* Everything that is not on the path to the certificate is removed from the
+     layout entirely -- not merely made invisible. */
+  [data-cert-printing] > *:not([data-cert-print-ancestor]),
+  [data-cert-print-ancestor] > *:not([data-cert-print-ancestor]):not(#certificate-sheet) {
+    display: none !important;
   }
 
-  /* ...then bring back the certificate and everything inside it. */
-  #certificate-sheet,
-  #certificate-sheet * {
-    visibility: visible;
+  /* The ancestors themselves survive, because they contain the card -- but
+     they must not contribute any spacing of their own, or the page picks up
+     the app layout's padding and max-width.
+
+     `min-height` is the one that actually bit. The page wrapper carries
+     Tailwind's `min-h-screen`, i.e. min-height:100vh, which kept the document
+     935px tall on a 935px viewport even after every other child had been
+     removed from layout -- one page of certificate and a second page holding
+     nothing but the leftover viewport. Resetting padding and margin alone
+     looked like it worked and did not. */
+  [data-cert-print-ancestor] {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    width: auto !important;
+    min-height: 0 !important;
+    height: auto !important;
   }
 
-  /* Lift the card out of the page flow so it prints at the top of the sheet
-     instead of wherever it happened to sit under the (now invisible) nav and
-     heading, which would otherwise leave a page of white space above it. */
+  /* Same reasoning one level up: the document itself must be free to collapse
+     to the height of its only remaining content. */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* The printable area of an A4 landscape page at the 12mm margin set below,
+     less 1mm in each direction. Fixed height with `overflow: hidden`, so the
+     box is one page and there is no second page for anything to spill onto.
+
+     THE 1mm IS NOT DECORATIVE. Sized to the printable area exactly (273 x
+     186mm), the card's measured bottom came out at 702.9921264648438px
+     against a page box of 702.9921259842521px -- larger by five ten-millionths
+     of a pixel, purely from floating-point rounding in layout. Whether that
+     rounds away or paginates into a second, blank page is at the mercy of one
+     browser's rounding on one machine. A millimetre of slack is invisible on
+     paper and settles the question. Keep in sync with PAGE_W / PAGE_H in
+     src/pages/Certificate.tsx. */
   #certificate-sheet {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 100%;
+    position: relative;
+    width: 272mm;
+    height: 185mm;
+    overflow: hidden;
     box-shadow: none;
+  }
+
+  /* Laid out wide, then scaled down to fit. Both custom properties are written
+     by the print effect in Certificate.tsx immediately before window.print(),
+     and are read ONLY here -- so nothing about this changes what the card
+     looks like on screen. The fallbacks render an unscaled card rather than an
+     invisible one if the effect ever fails to run. */
+  #certificate-card {
+    width: var(--cert-print-width, 100%);
+    margin-left: var(--cert-print-offset, 0);
+    transform: scale(var(--cert-print-scale, 1));
+    transform-origin: top left;
   }
 
   /* Screen-only chrome that must never reach paper even when it sits inside

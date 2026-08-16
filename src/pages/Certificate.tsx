@@ -12,6 +12,87 @@ import {
 const GOLD = "#D4A147";
 const FOREST = "#3F7A5C";
 
+/* ---------- Printing ---------- */
+
+// The printable area of an A4 landscape page at the 12mm margin declared in
+// the @page rule, in CSS pixels. Print CSS fixes 1in at 96px regardless of the
+// real device, so this conversion is exact rather than an approximation.
+// The 1mm inset is the same safety slack the #certificate-sheet rule in
+// index.css carries, and for the reason documented there: sized to the
+// printable area exactly, the card's measured height exceeded the page box by
+// ~5e-7px of floating-point rounding, which is enough to risk a blank second
+// page. These two values must stay in sync with that rule.
+const PX_PER_MM = 96 / 25.4;
+const PAGE_W = 272 * PX_PER_MM; // 297mm - 2 x 12mm margin - 1mm slack
+const PAGE_H = 185 * PX_PER_MM; // 210mm - 2 x 12mm margin - 1mm slack
+
+// The width the card is laid out at before being scaled down. Chosen so that
+// 1336 / (the card's natural height) matches the printable area's own aspect
+// ratio, which is what makes the scaled card fill the page instead of sitting
+// in a band of white. It is a layout width, not a final size -- the card is
+// always scaled to whatever actually fits.
+const CARD_PRINT_WIDTH = 1336;
+
+/**
+ * Put the DOM into its printable shape, and return the undo.
+ *
+ * Two jobs, both of which have to happen against the real laid-out page rather
+ * than in a stylesheet:
+ *
+ * 1. TAG THE ANCESTORS. The print stylesheet hides every element that is not
+ *    on the path from <body> to the card. CSS cannot express "is an ancestor
+ *    of" without `:has()`, and an unsupported `:has()` invalidates the whole
+ *    selector -- which would print the entire application UI rather than
+ *    nothing. Walking the parent chain here is three lines and works in every
+ *    browser.
+ *
+ * 2. MEASURE THE SCALE. How far the card has to shrink depends on how tall it
+ *    is, and its height depends on its content -- a longer name, another tier
+ *    line. Measuring it at print time keeps the fit correct as the card
+ *    changes, where a hardcoded factor would silently drift into clipping.
+ *
+ *    The measurement is taken at the card's CURRENT on-screen width, which is
+ *    not the width it prints at. That is sound here because the card's height
+ *    is width-independent (its content does not reflow), and it fails safe if
+ *    that ever stops being true: measuring a taller card yields a smaller
+ *    scale, so the certificate would print slightly small rather than spill
+ *    onto a second page.
+ */
+function prepareForPrint(): () => void {
+  const sheet = document.getElementById("certificate-sheet");
+  const card = document.getElementById("certificate-card");
+  if (!sheet || !card) return () => {};
+
+  const ancestors: HTMLElement[] = [];
+  for (let el = sheet.parentElement; el && el !== document.body; el = el.parentElement) {
+    el.dataset.certPrintAncestor = "";
+    ancestors.push(el);
+  }
+  document.body.dataset.certPrinting = "";
+
+  const height = card.getBoundingClientRect().height;
+  // Never scale UP. A card that already fits is left at its natural size
+  // rather than blown up to fill the paper.
+  const scale = Math.min(1, PAGE_W / CARD_PRINT_WIDTH, PAGE_H / height);
+
+  card.style.setProperty("--cert-print-width", `${CARD_PRINT_WIDTH}px`);
+  card.style.setProperty("--cert-print-scale", `${scale}`);
+  // Centre whatever the scale leaves over. Applied as a margin on the
+  // unscaled box, so it is measured in pre-transform pixels.
+  card.style.setProperty(
+    "--cert-print-offset",
+    `${Math.max(0, (PAGE_W - CARD_PRINT_WIDTH * scale) / 2 / scale)}px`,
+  );
+
+  return () => {
+    ancestors.forEach((el) => delete el.dataset.certPrintAncestor);
+    delete document.body.dataset.certPrinting;
+    card.style.removeProperty("--cert-print-width");
+    card.style.removeProperty("--cert-print-scale");
+    card.style.removeProperty("--cert-print-offset");
+  };
+}
+
 function Certificate() {
   // Students are anonymous — Sprig holds a nickname and nothing else — so the
   // name is typed, not looked up. It starts empty rather than pre-filled with
@@ -32,7 +113,9 @@ function Certificate() {
 
   useEffect(() => {
     if (!printQueued) return;
+    const cleanUp = prepareForPrint();
     window.print();
+    cleanUp();
     setPrintQueued(false);
     setBlank(false);
   }, [printQueued]);
@@ -240,8 +323,14 @@ function CertificateCard({
 
   return (
     <div id="certificate-sheet" className="relative">
-      {/* Outer gold hairline */}
+      {/* Outer gold hairline.
+          `certificate-sheet` is the PAGE and `certificate-card` is the thing
+          printed on it: in print the sheet becomes a fixed one-page box and
+          this card is what gets scaled to fit inside it. On screen the two are
+          indistinguishable, which is why they were one element until printing
+          needed to move them independently. */}
       <div
+        id="certificate-card"
         className={`rounded-[6px] p-[1px] transition-[filter,opacity] duration-500 ${
           earned ? "" : "opacity-[0.62] grayscale-[0.55]"
         }`}
