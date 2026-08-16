@@ -11,7 +11,6 @@ import {
   LogOut,
   Sparkles,
   CalendarClock,
-  CircleDot,
 } from "lucide-react";
 import { useAuth } from "@/context/auth";
 import type { Student } from "@/context/auth";
@@ -72,7 +71,7 @@ export function TopNav() {
         <div className="flex items-center gap-2">
           <div className="relative" ref={notifRef}>
             <button
-              aria-label="Notifications"
+              aria-label="Announcements"
               aria-expanded={notifOpen}
               onClick={() => {
                 setNotifOpen((v) => !v);
@@ -80,8 +79,11 @@ export function TopNav() {
               }}
               className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
+              {/* The unread dot is gone with the fake notifications that
+                  justified it. Nothing tracks whether these have been read, so
+                  a permanent dot would nag every student forever about two
+                  announcements they read on day one. */}
               <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-terracotta" />
             </button>
             {notifOpen && <NotificationsPanel />}
           </div>
@@ -124,40 +126,56 @@ export function TopNav() {
   );
 }
 
+/**
+ * Announcements, hand-written and the same for everybody.
+ *
+ * This panel used to hold three invented notifications: a topic unlock that
+ * had not happened, a baseline retake that was not waiting, and a live session
+ * with Artem on Thursday at 4pm that did not exist. Nothing generated them and
+ * nothing could have — there is no notifications table, no unlock event, no
+ * schedule.
+ *
+ * Two honest entries replace them. They are still static, and that is the
+ * point: this is an announcements list, not a notification system, and it says
+ * only things that are true of every student. Anything per-student (your topic
+ * unlocked, your retake is due) needs a real event source and belongs to a
+ * later piece of work.
+ *
+ * `date` is a fixed fact about the announcement, not a relative "2h ago"
+ * computed from nothing. Undated entries — things true since the beginning —
+ * simply carry no date.
+ */
+const ANNOUNCEMENTS: { icon: React.ReactNode; title: string; date?: string }[] = [
+  {
+    icon: <CalendarClock className="h-3.5 w-3.5 text-[color:var(--gold)]" />,
+    title: "Mastery (Tier 4) has been added — five new topics in the canopy.",
+    date: "14 August 2026",
+  },
+  {
+    icon: <Sparkles className="h-3.5 w-3.5 text-forest" />,
+    title: "Welcome to Sprig. Start at the trunk and work upwards.",
+  },
+];
+
 function NotificationsPanel() {
-  const items = [
-    {
-      icon: <Sparkles className="h-3.5 w-3.5 text-forest" />,
-      title: "New topic unlocked: Percentages in Real Life",
-      time: "2h ago",
-    },
-    {
-      icon: <CircleDot className="h-3.5 w-3.5 text-terracotta" />,
-      title: "Your baseline test is ready to retake",
-      time: "Yesterday",
-    },
-    {
-      icon: <CalendarClock className="h-3.5 w-3.5 text-[color:var(--gold)]" />,
-      title: "Upcoming live session with Artem — Thursday 4pm",
-      time: "3d",
-    },
-  ];
   return (
     <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[320px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
         <span className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
-          Notifications
+          Announcements
         </span>
-        <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-forest">
-          {items.length} new
+        {/* Not "2 new". Nothing records whether this student has read them, so
+            "new" would be a claim the app cannot back up. */}
+        <span className="font-mono text-[9.5px] uppercase tracking-[0.22em] text-muted-foreground/70">
+          {ANNOUNCEMENTS.length}
         </span>
       </div>
       <ul>
-        {items.map((it, i) => (
+        {ANNOUNCEMENTS.map((it, i) => (
           <li
             key={i}
             className={`flex items-start gap-3 px-4 py-3 ${
-              i < items.length - 1 ? "border-b border-border/50" : ""
+              i < ANNOUNCEMENTS.length - 1 ? "border-b border-border/50" : ""
             } hover:bg-secondary/60`}
           >
             <span className="mt-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-secondary">
@@ -165,9 +183,11 @@ function NotificationsPanel() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="text-[12.5px] leading-snug text-foreground">{it.title}</div>
-              <div className="mt-1 font-mono text-[9.5px] uppercase tracking-[0.2em] text-muted-foreground">
-                {it.time}
-              </div>
+              {it.date && (
+                <div className="mt-1 font-mono text-[9.5px] uppercase tracking-[0.2em] text-muted-foreground">
+                  {it.date}
+                </div>
+              )}
             </div>
           </li>
         ))}
