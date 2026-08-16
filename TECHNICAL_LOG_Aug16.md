@@ -593,3 +593,448 @@ Afterwards: all 9 rows deleted, and both scratch accounts (student `Careful
 Kestrel`, teacher `scratch-help-test@example.invalid`) removed by deleting the
 auth user and confirming the cascade. Back to 8 students and the two original
 teachers.
+
+---
+
+# Part two — six fixes from the full walkthrough
+
+Later the same day, after walking the whole app end-to-end as a
+100%-complete student (`Test Student D`), as a teacher, and across four
+students at 10/25/40/70%. Six things came out of it. Nothing turned up on
+the teacher side.
+
+One migration went with it
+(`20260818000000_split_avatar_shape_and_colour.sql`), applied to the live
+database and verified.
+
+The theme this time is different from the morning's. Part one was about
+replacing invented values with derived ones. **This half is mostly about
+measurement — four of the six were caused by a number that had been
+estimated when it could have been measured**, and the estimate was wrong in
+a way nobody would spot by reading the code. That is worth internalising:
+a guess in a layout calculation does not crash, it just quietly renders
+something slightly wrong forever.
+
+---
+
+## 8. Avatars: why half the palette was invisible
+
+### What was wrong
+
+The picker offered eight leaves and four of them were nearly impossible to
+see. Not a bug in the picker — a consequence of one line in how a leaf is
+drawn:
+
+```tsx
+stroke={color}
+strokeWidth={1.4}
+```
+
+Each leaf was outlined in its own colour. Look at what those colours
+actually are, from the palette in `src/index.css`:
+
+```css
+--cream:      oklch(0.975 0.012 140);   /* the background */
+--forest:     oklch(0.56  0.075 168);
+--sage:       oklch(0.82  0.04  155);
+--mint:       oklch(0.9   0.045 165);
+```
+
+The first number in `oklch()` is **lightness**, 0 = black and 1 = white.
+Forest at 0.56 against cream at 0.975 is a difference of 0.415 — plenty.
+Mint at 0.9 against 0.975 is a difference of **0.075**, drawn 1.4 pixels
+wide. That is a pale green line on pale green paper.
+
+This is the useful thing about `oklch` over hex codes: `#CDE8D4` and
+`#F6F5F0` do not obviously tell you they are too close together, whereas
+`0.9` and `0.975` do. Lightness is a number you can subtract.
+
+### The fix
+
+Every leaf now gets a dark contour drawn *underneath* the coloured one,
+slightly wider so it survives as an edge:
+
+```tsx
+{/* contour first, wider */}
+<path d={shape.d} stroke="var(--ink)" strokeWidth={2.6} ... />
+{/* colour on top, narrower */}
+<path d={shape.d} stroke={colour} strokeWidth={1.4} ... />
+```
+
+Painting order matters here: SVG draws later elements on top, so the ink
+path has to come first or it would cover the colour entirely. The 1.2px
+difference in width is what shows around the edge.
+
+`--ink` (0.26) rather than pure black. It reads as black at this size, and
+it is the near-black the rest of Sprig already uses — a `#000` outline in
+a palette that contains no pure black looks like a mistake even when
+nobody can say why.
+
+---
+
+## 9. Splitting one column into two
+
+### The insight
+
+The eight options were ids like `maple-forest` and `oak-mint`, with a
+`CHECK` constraint listing all eight. Adding more meant writing out more
+combinations by hand.
+
+But look at the names. **The pairing was never really one value.** It was
+two values with a hyphen between them, and the constraint list was the
+cross-product of eight shapes and four colours, enumerated manually and
+truncated at eight rows. Splitting the column is not adding a feature so
+much as admitting what the data already was:
+
+```sql
+alter table students add column if not exists avatar_shape  text;
+alter table students add column if not exists avatar_colour text;
+```
+
+Eight shapes and six colours give **48 combinations from 14 allowed
+values** — instead of 8 combinations from 8.
+
+### Three things in the migration worth understanding
+
+**Split on the last hyphen, not the first.**
+
+```sql
+avatar_shape  = substring(avatar_leaf from '^(.*)-[^-]*$'),
+avatar_colour = substring(avatar_leaf from '-([^-]*)$')
+```
+
+Every current id has exactly one hyphen, so either would work *today*. A
+future shape called `four-leaf` would break a split-on-first and silently
+produce shape `four`, colour `leaf` — both of which fail the constraint,
+but only after somebody adds that shape months later. `^(.*)-[^-]*$` is
+greedy on the left, so it takes everything up to the final hyphen.
+
+**Fail loudly rather than partially.**
+
+```sql
+if v_orphans > 0 then
+  raise exception 'avatar backfill left % row(s) unsplit -- aborting', v_orphans;
+end if;
+```
+
+A backfill that half-works is worse than one that does not run. Without
+this, a row whose id did not split would end up with two nulls, the client
+would render initials, and it would look like that student simply never
+chose an avatar. Raising inside a `do $$ ... $$` block aborts the whole
+transaction, so the columns are never left in that state.
+
+**Drop the old function explicitly.**
+
+```sql
+drop function if exists public.set_avatar_leaf(text);
+create or replace function public.set_avatar_leaf(p_shape text, p_colour text)
+```
+
+This is the one that would have bitten. **Postgres identifies a function by
+its name *and* its argument types.** `create or replace` with two arguments
+does not replace the one-argument version — it creates a second, separate
+function alongside it. The old one would still be callable, and it writes
+to `avatar_leaf`, a column this same migration drops. That failure surfaces
+whenever something old calls it, which could be weeks later.
+
+### Why the RPC coalesces
+
+```sql
+update public.students
+   set avatar_shape  = coalesce(p_shape,  avatar_shape),
+       avatar_colour = coalesce(p_colour, avatar_colour)
+```
+
+The picker is two independent controls, so it sends one half at a time.
+Without `coalesce`, choosing a colour would write `null` into the shape and
+wipe the leaf the student had picked. With it, `null` means "leave this
+alone", and the database stays the only place the current answer lives —
+the client never has to hold a correct local copy of it.
+
+Verified in the browser: picking terracotta kept the shape, then picking
+ginkgo kept terracotta.
+
+---
+
+## 10. The underline that could not have been right
+
+### What was wrong
+
+Each tier name on the journey tree has a rule under it. Its width was:
+
+```tsx
+const w = label.length * (fontSize * 0.34);
+```
+
+Character count times an assumed average character width. In a
+proportional font this cannot work, and it fails in two ways at once:
+
+1. **Too short on every label.** 0.34 em per character underestimates
+   italic Fraunces at 44px.
+2. **Wrong by a different amount on each.** "Mastery" is 7 characters and
+   "Mathematics" is 11, but they are not in a 7:11 width ratio — `M`, `a`
+   and `i` are all different widths. So the error is not even consistent.
+
+A rule that is supposed to run from the first letter to the last cannot be
+derived from how many letters there are.
+
+### The fix, and the subtlety in it
+
+Measure the actual glyphs:
+
+```tsx
+const measure = () => setWidth(textRef.current.getBBox().width);
+```
+
+`getBBox()` returns the tight bounding box of rendered SVG content in
+viewBox units — exactly the span wanted, and correct forever, including if
+a label is renamed or the font is swapped.
+
+**The subtlety is web fonts.** Fraunces arrives over the network. The first
+paint happens in the fallback serif, so a measurement taken on mount
+records the width of *the wrong typeface* and never corrects itself:
+
+```tsx
+measure();
+void document.fonts?.ready.then(measure);
+```
+
+`document.fonts.ready` is a promise that resolves once font loading has
+settled. Measuring twice is the price of measuring at all.
+
+One deliberate detail: while `width` is still `null` the line is not
+rendered at all, rather than rendered at a guessed length and corrected a
+frame later. A rule that visibly snaps to a new width on load looks broken;
+one that fades in a frame late does not.
+
+`"Essentials"` also moved from x=880 to x=800. It is the only header set
+beside its subject instead of floating above the canopy, so it is the only
+one with anything to collide with.
+
+---
+
+## 11. Making a chart's colour carry information
+
+### What was wrong
+
+Every stroke on the growth chart was `var(--forest)`. Not broken — just
+spending the one spare visual channel a line chart has on nothing.
+
+### What it says now
+
+Two things a student actually wants from a growth chart:
+
+- **Where they started.** The baseline is a filled `--bark` dot. It is the
+  reference everything else is measured against, not itself a result.
+- **Which way each check moved.** Each leg is forest if the score rose or
+  held, terracotta if it fell.
+
+```tsx
+function pointColor(points: GrowthPoint[], i: number): string {
+  if (i === 0 || points[i].kind === "baseline") return BASELINE_COLOR;
+  return points[i].score >= points[i - 1].score ? RISE_COLOR : DIP_COLOR;
+}
+```
+
+To colour legs individually the single `<path>` had to become one path per
+segment — a polyline can only carry one stroke.
+
+### The pedagogical decision, which was the real one
+
+The obvious alternative was colouring by score band: red under 50%, amber
+to 75%, green above. It was rejected, and the reason is worth keeping.
+
+**Banding paints a verdict on the number itself.** A student climbing from
+30% to 45% has done something genuinely good and would watch their chart
+sit in the warning colour the entire way up. Direction colours the
+*movement*, which is the part a 13-year-old controls. On a page called
+"How you're growing", that is the honest axis.
+
+Two smaller decisions in the same spirit:
+
+- Equal scores count as a rise. Holding steady is not a fall, and a
+  student who scores identically twice should not be shown a warning
+  colour for it.
+- The baseline is *filled* as well as differently coloured, so it is still
+  distinguishable to a colour-blind reader. Colour alone is never the only
+  carrier of a distinction.
+
+### A typing detail
+
+`GrowthPoint` gained the test type rather than inferring it from position:
+
+```tsx
+kind: "baseline" | "growth_check";
+```
+
+Index 0 is *usually* the baseline. But a student whose first attempt failed
+to save would have their earliest Growth Check silently relabelled as a
+baseline — a wrong statement about their history, produced by an
+assumption that was true almost always.
+
+And in the tooltip:
+
+```tsx
+return `${rounded > 0 ? "+" : ""}${rounded} pts`;
+```
+
+**Points, not percent.** The scores are already percentages, so 44% to 52%
+is eight percentage *points*, not eight percent (eight percent of 44 is
+3.5). On a page teaching students to read numbers about money carefully,
+"+8%" would be quietly wrong.
+
+---
+
+## 12. The certificate print: three symptoms, two causes
+
+This was the most interesting one, because the original code was not
+careless — it used the standard recipe, and the standard recipe was the
+problem.
+
+### Cause one: `visibility` preserves layout
+
+```css
+body * { visibility: hidden; }
+#certificate-sheet, #certificate-sheet * { visibility: visible; }
+```
+
+This is the well-known way to print one element, and it is chosen for a
+real reason: `display: none` on an ancestor removes the entire subtree
+regardless of what descendants ask for, so you cannot hide the page and
+then un-hide something nested inside it. `visibility` is inherited but
+*overridable*, so the two-rule version works.
+
+**But `visibility: hidden` hides an element without removing it from
+layout.** That is the same property that makes the trick work. The nav, the
+heading and the actions column were invisible and still occupied their full
+height, so the document stayed as tall as the whole screen page: one sheet
+of certificate followed by two sheets of very carefully rendered white.
+
+The fix hides with `display: none` after all, and solves the ancestor
+problem directly — before printing, the code walks up from the card tagging
+each ancestor:
+
+```tsx
+for (let el = sheet.parentElement; el && el !== document.body; el = el.parentElement) {
+  el.dataset.certPrintAncestor = "";
+  ancestors.push(el);
+}
+```
+
+```css
+[data-cert-printing] > *:not([data-cert-print-ancestor]),
+[data-cert-print-ancestor] > *:not([data-cert-print-ancestor]):not(#certificate-sheet) {
+  display: none !important;
+}
+```
+
+**Why not `:has()`?** It would express "is an ancestor of the card" in pure
+CSS with no JavaScript. It was rejected on failure mode: a browser that
+does not support a selector does not ignore that one rule, it **discards
+the entire selector as invalid**. Here that would mean nothing gets hidden
+— printing the whole application UI instead of the certificate. Attribute
+selectors work everywhere, and the JS was already running.
+
+### Cause two: `width: 100%` means something different in print
+
+```css
+#certificate-sheet { position: absolute; width: 100%; }
+```
+
+On screen the sheet sits in a ~600px grid column. In print, `100%`
+resolves against the *page box*, so the card stretched to the full ~1032px
+printable width and its fixed-height content overflowed the 186mm
+available.
+
+It is now laid out at a fixed width and scaled to fit, with the factor
+measured at print time so it survives a longer name or another tier line:
+
+```tsx
+const scale = Math.min(1, PAGE_W / CARD_PRINT_WIDTH, PAGE_H / height);
+```
+
+`Math.min` with `1` in the list means it never scales *up* — a card that
+already fits is left alone rather than blown up to fill the paper.
+
+### Two details worth stealing
+
+**Print CSS pixels are not device pixels.** Print stylesheets fix 1 inch at
+96px regardless of the actual printer, which is why the page arithmetic is
+exact rather than approximate:
+
+```tsx
+const PX_PER_MM = 96 / 25.4;
+```
+
+**The millimetre of slack.** Sized to the printable area exactly, the
+measurement came back:
+
+```
+content bottom  702.9921264648438
+page box        702.9921259842521
+```
+
+The content was larger by **five ten-millionths of a pixel** — pure
+floating-point rounding in layout. Whether that rounds away or paginates
+into a blank second page is at the mercy of one browser's rounding on one
+machine. This is exactly the sort of thing that shows up as an
+intermittent blank page on a school printer and takes a whole afternoon to
+find. A millimetre of slack is invisible on paper and removes the question.
+
+### How it was verified
+
+Not by eyeballing a print preview. `window.print` was temporarily replaced
+with a function that measures, so the reading was taken at the precise
+moment the shipped `prepareForPrint()` had finished and before its cleanup
+ran, with the real `@media print` rules lifted out of the live stylesheet
+via the CSSOM and re-applied without the media query:
+
+```
+card rendered   1026 x 699 px
+page box        1032 x 703 px
+content extent  699.21 px
+PAGES           1
+overflowing     none
+```
+
+The technique generalises: when you need to inspect a state that only
+exists for an instant inside somebody else's function, hook the thing that
+function calls at the moment you care about.
+
+---
+
+## 13. What this half is really about
+
+Four of the six were an estimate standing in for a measurement:
+
+| Fix | The estimate | The measurement |
+|---|---|---|
+| Underlines | `length * fontSize * 0.34` | `getBBox().width` |
+| Certificate scale | `width: 100%` | `PAGE_H / measured height` |
+| Leaf visibility | "the colour will show" | lightness 0.9 vs 0.975 |
+| Page fit | "186mm is the page" | 702.99212**6** vs 702.99212**5** |
+
+None of them crashed. None would appear in a type error or a failing test.
+They rendered something slightly wrong, indefinitely, and were only ever
+going to be caught by someone looking carefully at the screen — which is
+what the walkthrough was.
+
+**The general lesson: if a layout value can be measured, measuring it is
+almost always shorter than the comment explaining why the estimate is
+close enough.**
+
+---
+
+## 14. Test data added
+
+`Earnest Dormouse` gained two Growth Checks (30 Jul, 61.1%; 8 Aug, 55.6%),
+inserted additively — nothing existing was modified. A student whose
+scores only ever improve exercises one of the two colour branches, so
+there was no way to see the terracotta leg without a dip in the data.
+
+The plotted line for that account is now baseline 44.4% -> 61.1% -> 55.6%
+-> 83.3%: rise, dip, rise. The two Progress Checks remain correctly
+excluded from the chart.
+
+`Test Student D`'s avatar was changed during testing and put back to
+maple/forest afterwards.
