@@ -531,3 +531,24 @@ Click-through was checked on the live dashboard: II.I navigates to
 
 Not verified against a genuinely partial *live* account, because none exists —
 `Test Student D` and `Test Student A` are both at 80/80.
+
+## Committed
+
+Branched to `port-journey-tree-design`, then fast-forwarded into `main` and
+pushed (`ebaf5eb..be8a834`).
+
+| Commit | What |
+| --- | --- |
+| `0a9f326` | Redraw the journey tree from the new canopy design |
+| `be8a834` | Record the tree design port in the 17 August log |
+
+The code change is one file, `src/components/sprig/JourneyTree.tsx`
+(+929 / -418). That single-file diff is the whole argument that the top nav,
+the left rail and the stats are unchanged — not "I looked and they seemed
+fine", but "those files were never opened". When a task is scoped to one
+component, `git status` at the end is the cheapest proof you will ever get
+that you stayed inside it, and it is worth reaching for before writing any
+prose about what you did or did not touch.
+
+`TECHNICAL_LOG_Aug17.md` was untracked until now, so `be8a834` adds the whole
+day — the walkthrough fixes from the earlier session as well as this port.
