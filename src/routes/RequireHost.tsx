@@ -27,6 +27,13 @@ import { AuthPending } from "./RequireAuth";
  *     they were a host. /teacher is their real dashboard.
  *   - A student, almost always by typing the URL. /dashboard is theirs.
  *
+ * NOT A REDIRECT LOOP, though it reads like one at a glance: this guard sends
+ * a non-host teacher to /teacher, and RequireTeacher sends a host to /host.
+ * The two conditions are exact opposites of the same boolean, so any given
+ * account satisfies one of them and never both — a host stops at /host, a
+ * non-host stops at /teacher. It would only cycle if the two guards could ever
+ * disagree about `is_host`, and they read the same field off the same object.
+ *
  * Used as a layout route, so it wraps its children via <Outlet />.
  */
 export function RequireHost() {

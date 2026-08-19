@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/context/auth";
 import { fetchHostData, type HostData } from "@/lib/hostData";
 import {
@@ -113,12 +112,6 @@ function HostDashboard() {
             <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
               Host · {teacher?.email}
             </span>
-            <Link
-              to="/teacher"
-              className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Your class
-            </Link>
             <button
               onClick={() => void signOut()}
               className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"

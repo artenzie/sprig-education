@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "@/context/auth";
 import {
   fetchTeacherStudents,
@@ -162,18 +161,6 @@ function TeacherStudents() {
             <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
               {teacher?.school_name ?? teacher?.email ?? "Teacher"}
             </span>
-            {/* Only a host has anywhere to go here, and only a host's RLS
-                policies would return anything if they went. Hiding the link
-                from everyone else is politeness, not protection — see the
-                header of src/routes/RequireHost.tsx. */}
-            {teacher?.is_host && (
-              <Link
-                to="/host"
-                className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-forest transition-colors hover:text-foreground"
-              >
-                Host view
-              </Link>
-            )}
             <button
               onClick={() => void signOut()}
               className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"

@@ -299,11 +299,34 @@ Beyond the script:
 
 ---
 
-## 8. One consequence worth knowing
+## 8. One consequence, and how it was resolved
 
-Because policies are per-table and not per-page, the host's **`/teacher` page now
-lists all 18 students**, not just their own class — the "Hosts read all students"
-policy applies wherever `students` is read. That is consistent rather than
-buggy, but it means "your class" is a slightly wrong label for a host. Worth
-deciding later whether `/teacher` should filter explicitly for a host, which
-would be the one place a client-side `.eq()` earns its keep.
+Because policies are per-table and not per-page, the host's `/teacher` page
+listed **all** students rather than their own class — the "Hosts read all
+students" policy applies wherever `students` is read, regardless of which page
+is doing the reading. Consistent rather than buggy, but it left "Your class"
+sitting above a roster of the entire pilot.
+
+Resolved by separating the two roles' surfaces entirely rather than by
+filtering:
+
+- The cross-links between `/teacher` and `/host` were removed.
+- `RequireTeacher` now redirects a host to `/host`.
+- A host lands on `/host` at login and cannot reach `/teacher` at all.
+
+So `/teacher` has exactly one occupant again, the ordinary teacher it was built
+for, and its copy is true for everyone who can reach it.
+
+**Be precise about what that did and did not do.** It removed a *page*, not any
+*access*. A host's six read policies still return every student, score and
+check-in wherever those tables are read — that is the role working as designed,
+and a host querying `students` directly with their own session would still get
+all of them. Route guards are a routing convenience; the policies are the
+boundary. Narrowing what a host can *read* would be a policy change, and this
+was not one.
+
+The other thing worth noting is that the two guards now redirect at each other
+— `RequireHost` sends a non-host to `/teacher`, `RequireTeacher` sends a host to
+`/host`. That is not a loop, because they test exact opposites of the same
+boolean read off the same object: any account satisfies one condition and never
+both. It would only cycle if the two could disagree about `is_host`.
