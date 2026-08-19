@@ -30,3 +30,7 @@ students-*.csv
 *.njsproj
 *.sln
 *.sw?
+
+# Pre-migration RLS snapshot written by scripts/check-rls.ts. Local artifact,
+# tied to whichever throwaway accounts produced it.
+rls-baseline*.json

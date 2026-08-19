@@ -8,7 +8,7 @@ import type { AuthStatus, Role, SignInResult, Student, Teacher } from "./auth";
 
 const STUDENT_COLUMNS =
   "id, nickname, current_tier, must_change_pin, avatar_shape, avatar_colour";
-const TEACHER_COLUMNS = "id, email, school_name";
+const TEACHER_COLUMNS = "id, email, school_name, is_host";
 
 /** What the lockout functions in the database return. */
 type LockoutPayload = {
@@ -23,6 +23,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [student, setStudent] = useState<Student | null>(null);
   const [teacher, setTeacher] = useState<Teacher | null>(null);
+  /**
+   * WHICH USER the profiles in state belong to — not merely whether some
+   * profile lookup has finished.
+   *
+   * This was a bare `profilesLoaded` boolean, and the difference matters on
+   * every cold page load. The sequence that broke:
+   *
+   *   1. First render: userId is null (the session is still being read back
+   *      out of localStorage, which is async), so the effect below takes its
+   *      `!userId` branch and sets loaded = TRUE. Correct in itself — there
+   *      are no profiles to wait for when nobody is signed in.
+   *   2. getSession() resolves. session and userId are set.
+   *   3. React renders. sessionLoaded is true, userId is now set, and loaded
+   *      is STILL true from step 1 — so `status` reads "authed" while student
+   *      and teacher are both null.
+   *   4. Only after that render commits does the effect re-run and set loaded
+   *      back to false.
+   *
+   * Step 3 is a real, rendered frame in which the app claims to be signed in
+   * and cannot say as whom. Every route guard reads exactly that: RequireHost
+   * saw `role === null`, concluded "not a teacher", and redirected a genuine
+   * host away from /host on every refresh and every bookmark. RequireTeacher
+   * had the same hole for the same reason; it just took a host to notice it,
+   * because /teacher's redirect happens to land somewhere plausible.
+   *
+   * Storing the id closes the window without adding a render: in step 3 the
+   * stored id (null) no longer matches the current userId, so `status` stays
+   * "loading" until the profiles for THIS user have actually arrived.
+   */
+  const [profilesUserId, setProfilesUserId] = useState<string | null>(null);
   // One flag for both lookups: they're fired together and there is no useful
   // in-between state where we know one and not the other.
   const [profilesLoaded, setProfilesLoaded] = useState(false);
@@ -112,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!userId) {
       setStudent(null);
       setTeacher(null);
+      setProfilesUserId(null);
       setProfilesLoaded(true);
       return;
     }
@@ -124,6 +155,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setStudent(nextStudent);
         setTeacher(nextTeacher);
+        // Stamped with the id these two belong to, so a later render can tell
+        // "loaded, for this user" from "loaded, for whoever was here before".
+        setProfilesUserId(userId);
         setProfilesLoaded(true);
       },
     );
@@ -250,11 +284,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // session, and the effect above clears both profiles in response.
   }, []);
 
+  // "Loaded" is not enough on its own — it has to be loaded FOR THIS USER.
+  // See the long note on profilesUserId above for the cold-load frame this
+  // closes, and which route guards were reading.
+  const profilesCurrent = profilesLoaded && profilesUserId === userId;
+
   const status: AuthStatus = !sessionLoaded
     ? "loading"
     : !userId
       ? "anon"
-      : !profilesLoaded
+      : !profilesCurrent
         ? "loading"
         : "authed";
 

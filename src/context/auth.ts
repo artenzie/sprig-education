@@ -48,6 +48,24 @@ export type Teacher = {
   id: string;
   email: string;
   school_name: string | null;
+  /**
+   * Whether this teacher can see across every class rather than only their
+   * own — see supabase/migrations/20260818010000_host_role.sql.
+   *
+   * Deliberately a flag on the teacher rather than a third value in `Role`.
+   * A host IS a teacher: they have a class, they use /teacher, and every
+   * teacher rule applies to them unchanged. What they additionally have is
+   * one boolean that six RLS policies read. Modelling that as a separate role
+   * would have meant teaching RequireAuth, RequireTeacher and the role
+   * derivation about a case that behaves identically to `teacher` in all but
+   * one respect.
+   *
+   * As with everything else on this type, it is REPORTED by the browser, not
+   * decided by it. The value arrives from a policy-filtered read of the
+   * teacher's own row, and setting it in devtools would change what the UI
+   * offers to show and nothing whatsoever about what the database returns.
+   */
+  is_host: boolean;
 };
 
 /**

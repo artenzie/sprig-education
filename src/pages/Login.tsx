@@ -3,10 +3,31 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
 import { useAuth } from "@/context/auth";
+import type { Role, Teacher } from "@/context/auth";
 import { PIN_LENGTH, keepDigits } from "@/lib/studentAuth";
 
+/**
+ * Where a signed-in account belongs.
+ *
+ * PURELY A DESTINATION, not a permission. Nothing here grants anything: a host
+ * lands on /host because that is the page they want, and a non-host is sent to
+ * /teacher because /host would be an empty page for them — the six RLS policies
+ * behind it evaluate `public.is_host()` in the database and return nothing to
+ * anybody else. Editing this function changes which page loads first and has no
+ * effect whatsoever on what any of them can read. RequireHost and RequireTeacher
+ * are untouched by it.
+ *
+ * `is_host` is read off the teachers row, which arrives from a policy-filtered
+ * select of the user's OWN row — so a browser that forced it to true would send
+ * itself to a dashboard with every section empty.
+ */
+function landingFor(role: Role, teacher: Teacher | null): string {
+  if (role !== "teacher") return "/dashboard";
+  return teacher?.is_host ? "/host" : "/teacher";
+}
+
 function Login() {
-  const { status, role } = useAuth();
+  const { status, role, teacher } = useAuth();
 
   // Already signed in — no reason to show them a login form. Which half of the
   // app they belong to is decided by which table has a row for them, so this
@@ -14,8 +35,12 @@ function Login() {
   // /teacher; sending a student to /teacher would bounce them back. Both work,
   // and both would flash a screen nobody meant to show. If a student still
   // owes us a PIN change, RequireAuth on /dashboard picks that up.
+  //
+  // This is now the ONLY place that decides where a signed-in adult lands —
+  // see the note in AdultBox's submit handler for why it stopped navigating
+  // for itself.
   if (status === "authed") {
-    return <Navigate to={role === "teacher" ? "/teacher" : "/dashboard"} replace />;
+    return <Navigate to={landingFor(role, teacher)} replace />;
   }
 
   return (
@@ -192,7 +217,6 @@ function StudentBox() {
  * no account type yet.
  */
 function AdultBox() {
-  const navigate = useNavigate();
   const { signInWithEmail } = useAuth();
 
   const [email, setEmail] = useState("");
@@ -206,19 +230,31 @@ function AdultBox() {
 
     setError(null);
     setPending(true);
-    try {
-      const result = await signInWithEmail(email, password);
-      if (!result.ok) {
-        setError(result.message);
-        // Clear the password but keep the email, for the same reason the
-        // student form keeps the nickname: it's almost never the wrong half.
-        setPassword("");
-        return;
-      }
-      navigate("/teacher", { replace: true });
-    } finally {
+
+    const result = await signInWithEmail(email, password);
+    if (!result.ok) {
+      setError(result.message);
+      // Clear the password but keep the email, for the same reason the
+      // student form keeps the nickname: it's almost never the wrong half.
+      setPassword("");
       setPending(false);
+      return;
     }
+
+    // Deliberately no navigate() here, and deliberately no setPending(false).
+    //
+    // This used to be `navigate("/teacher")`, which cannot work now that where
+    // an adult lands depends on `is_host`: at the moment sign-in resolves, the
+    // teachers row has not been read yet, so `teacher` is still null and this
+    // handler has no way to tell a host from anybody else. Anything it decided
+    // here would be a guess, and the guess would be wrong for exactly the
+    // account the feature is for.
+    //
+    // So the redirect is left to the `status === "authed"` guard at the top of
+    // Login(), which by definition only runs once the profile for THIS user
+    // has loaded (see profilesUserId in AuthProvider). Leaving `pending` true
+    // holds the form in its "One moment…" state across that gap rather than
+    // flashing an enabled form nobody is meant to use again.
   }
 
   return (
@@ -227,7 +263,7 @@ function AdultBox() {
         <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
           <span>II</span>
           <span className="h-px w-6 bg-border" />
-          <span>Teacher &nbsp;·&nbsp; Parent</span>
+          <span>Teacher &nbsp;·&nbsp; Host &nbsp;·&nbsp; Parent</span>
         </div>
 
         <h2 className="mt-6 font-display text-[34px] font-normal leading-[1.05] tracking-[-0.03em]">

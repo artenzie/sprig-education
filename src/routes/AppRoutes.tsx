@@ -2,6 +2,7 @@ import { Navigate, Routes, Route } from 'react-router-dom'
 import { Suspense, lazy } from 'react'
 import { RequireAuth } from './RequireAuth'
 import { RequireTeacher } from './RequireTeacher'
+import { RequireHost } from './RequireHost'
 import { PageLoading } from '../components/PageLoading'
 
 // Lazy per route so each page's code loads only when a student actually
@@ -18,6 +19,7 @@ const TestFlow = lazy(() => import('../pages/TestFlow'))
 const Certificate = lazy(() => import('../pages/Certificate'))
 const Help = lazy(() => import('../pages/Help'))
 const TeacherStudents = lazy(() => import('../pages/TeacherStudents'))
+const HostDashboard = lazy(() => import('../pages/HostDashboard'))
 
 function AppRoutes() {
   return (
@@ -56,6 +58,19 @@ function AppRoutes() {
             which a teacher has or ever will. */}
         <Route element={<RequireTeacher />}>
           <Route path="/teacher" element={<TeacherStudents />} />
+        </Route>
+
+        {/* Signed in as a teacher who is also a host. A third guard rather
+            than a flag on RequireTeacher, for the same reason RequireTeacher
+            isn't a flag on RequireAuth: the redirect a failed check should
+            produce is different (a non-host teacher belongs on /teacher, not
+            /login), and burying that in a boolean prop makes it easy to miss.
+
+            Worth repeating what RequireHost's own header says, because this
+            is the widest read access in the app: the guard is a courtesy. The
+            RLS policies behind it are the boundary. */}
+        <Route element={<RequireHost />}>
+          <Route path="/host" element={<HostDashboard />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />
