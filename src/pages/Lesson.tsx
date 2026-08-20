@@ -739,11 +739,26 @@ function SprigPlant({
 
   // Leaf positions: {cx, cy, rot, side} — appear cumulatively.
   // Coordinates on the 100x120 canvas.
+  //
+  // ALL FOUR ROTATIONS ARE THE NEGATIVE OF WHAT THEY ONCE WERE, and the sign
+  // is the whole point. SVG's y axis grows downward, so a positive rotation
+  // turns clockwise on screen — the opposite of the usual maths convention,
+  // and easy to get backwards.
+  //
+  // Work leaf 1 through: the blade is an ellipse rx 6.5 centred at x=43, left
+  // of the stem at x=50, so its outer tip sits at local offset (-6.5, 0). Under
+  // the old rot -55 that tip landed at (-3.7, +5.3) — 5.3 units DOWN the
+  // canvas. Every leaf did the same, so the plant read as wilting at exactly
+  // the moments it was supposed to be growing. Flipping the sign sends the same
+  // tip to (-3.7, -5.3): up and out, the way a leaf reaching for light sits.
+  //
+  // The magnitudes are untouched, so the silhouette and spacing are the ones
+  // that were already tuned; only the direction changed.
   const leaves = [
-    { cx: 43, cy: 74, rot: -55 },  // leaf 1 (appears at stage 2)
-    { cx: 57, cy: 66, rot: 55 },   // leaf 2 (appears at stage 3)
-    { cx: 43, cy: 58, rot: -50 },  // leaf 3 (appears at stage 4)
-    { cx: 57, cy: 48, rot: 48 },   // leaf 4 (appears at stage 5)
+    { cx: 43, cy: 74, rot: 55 },   // leaf 1 (appears at stage 2)
+    { cx: 57, cy: 66, rot: -55 },  // leaf 2 (appears at stage 3)
+    { cx: 43, cy: 58, rot: 50 },   // leaf 3 (appears at stage 4)
+    { cx: 57, cy: 48, rot: -48 },  // leaf 4 (appears at stage 5)
   ];
 
   // Also a small crown leaf/tip for stage 5 to make it feel "finished".
@@ -792,7 +807,10 @@ function SprigPlant({
         opacity={stage === 0 ? 0.85 : 0.9}
       />
 
-      {/* Seedling cotyledons — only stage 0 */}
+      {/* Seedling cotyledons — only stage 0.
+          Rotations flipped for the same reason as the true leaves above: at
+          -30/+30 the two seed-leaves splayed downward, so the very first frame
+          of the sequence already looked droopy. */}
       {seedling && (
         <>
           <ellipse
@@ -800,7 +818,7 @@ function SprigPlant({
             cy={103}
             rx={3.2}
             ry={1.6}
-            transform="rotate(-30 46 103)"
+            transform="rotate(30 46 103)"
             fill="var(--forest)"
             opacity={0.85}
           />
@@ -809,7 +827,7 @@ function SprigPlant({
             cy={103}
             rx={3.2}
             ry={1.6}
-            transform="rotate(30 54 103)"
+            transform="rotate(-30 54 103)"
             fill="var(--forest)"
             opacity={0.85}
           />

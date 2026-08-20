@@ -123,11 +123,21 @@ export function TopNav() {
                 )}
               </>
             ) : (
+              /* "Sign Up" is in the label without a signup form behind it,
+                 deliberately. Students cannot register themselves — a nickname
+                 and PIN come from a teacher — but "Log in" alone gives someone
+                 arriving with no account nowhere to click and nothing to read.
+                 Sending them to /login puts them in front of the explanation in
+                 StudentBox, which is the honest answer to "how do I sign up?".
+
+                 A bare block comment, not the brace-wrapped JSX kind: this sits
+                 in a ternary branch, where the braces would be parsed as an
+                 object literal rather than a JSX expression container. */
               <Link
                 to="/login"
                 className="rounded-full border border-border/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest hover:text-foreground"
               >
-                Log in
+                Login / Sign Up
               </Link>
             )}
           </div>
@@ -241,29 +251,35 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
   // student, not to us, not to anyone who gets hold of the database. The cost
   // is that a forgotten PIN has to be reset by a teacher instead of looked up.
   return (
-    <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[316px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
+    <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[392px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
       <div className="m-3 overflow-hidden rounded-lg border border-border/60 bg-secondary/60">
         {/* Live preview. Shows the CURRENT pair, so changing either half is
             visible here before it is visible in the nav behind the panel. */}
-        <div className="flex h-20 items-center justify-center">
+        <div className="flex h-24 items-center justify-center">
           {isLeafShapeId(student.avatar_shape) ? (
             <LeafAvatar
               shape={student.avatar_shape}
               colour={student.avatar_colour}
-              className="h-14 w-14"
+              className="h-16 w-16"
             />
           ) : (
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-forest/15 font-display text-[22px] text-forest">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-forest/15 font-display text-[25px] text-forest">
               {nicknameInitials(student.nickname)}
             </div>
           )}
         </div>
 
-        <div className="border-t border-border/60 bg-background/60 p-3">
+        {/* The picker was 316px wide with 36px targets packed at 6px gaps,
+            which put eight leaves and six colours into roughly the space of a
+            dropdown menu — cramped enough that the shapes were hard to tell
+            apart at a glance, which defeats the point of offering eight. The
+            panel is wider now and every swatch is bigger with more air around
+            it; nothing about what gets stored changed. */}
+        <div className="border-t border-border/60 bg-background/60 p-4">
           <div className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
             Leaf
           </div>
-          <div className="mt-2 grid grid-cols-4 gap-1.5">
+          <div className="mt-3 grid grid-cols-4 gap-2.5">
             {LEAF_SHAPES.map((shape) => (
               <button
                 key={shape.id}
@@ -277,21 +293,23 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
                 // rather than eight unrelated ones. Picking a shape then
                 // changes exactly the thing the button showed.
                 onClick={() => pick(shape.id, student.avatar_colour ?? DEFAULT_COLOUR)}
-                className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors disabled:opacity-60 ${
+                className={`flex h-[52px] w-[52px] items-center justify-center rounded-full transition-colors disabled:opacity-60 ${
                   student.avatar_shape === shape.id
-                    ? "ring-2 ring-forest ring-offset-1 ring-offset-background"
+                    ? "ring-2 ring-forest ring-offset-2 ring-offset-background"
                     : "hover:bg-secondary"
                 }`}
               >
-                <LeafAvatar shape={shape.id} colour={student.avatar_colour} className="h-8 w-8" />
+                <LeafAvatar shape={shape.id} colour={student.avatar_colour} className="h-11 w-11" />
               </button>
             ))}
           </div>
 
-          <div className="mt-4 font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
+          <div className="mt-6 font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
             Colour
           </div>
-          <div className="mt-2 flex items-center gap-2">
+          {/* A six-column grid rather than a flex row, so the colours line up
+              underneath the leaves above them instead of bunching to the left. */}
+          <div className="mt-3 grid grid-cols-6 gap-2.5">
             {LEAF_COLOURS.map((colour) => (
               <button
                 key={colour.id}
@@ -301,9 +319,9 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
                 aria-pressed={student.avatar_colour === colour.id}
                 disabled={saving}
                 onClick={() => pick(null, colour.id)}
-                className={`flex h-7 w-7 items-center justify-center rounded-full transition-transform disabled:opacity-60 ${
+                className={`flex h-[38px] w-[38px] items-center justify-center rounded-full transition-transform disabled:opacity-60 ${
                   student.avatar_colour === colour.id
-                    ? "ring-2 ring-forest ring-offset-1 ring-offset-background"
+                    ? "ring-2 ring-forest ring-offset-2 ring-offset-background"
                     : "hover:scale-110"
                 }`}
               >
@@ -311,7 +329,7 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
                     a mint or sage swatch on a cream panel is otherwise a
                     barely-visible disc. */}
                 <span
-                  className="h-5 w-5 rounded-full border border-ink/70"
+                  className="h-7 w-7 rounded-full border border-ink/70"
                   style={{ backgroundColor: colourToken(colour.id) }}
                 />
               </button>

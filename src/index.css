@@ -66,6 +66,45 @@
   --gold: oklch(0.78 0.11 88);
   --bark: oklch(0.44 0.02 130);
 
+  /* ---------------------------------------------------------------------
+     Avatar leaf colours.
+
+     SEPARATE TOKENS ON PURPOSE, even though five of the six share a name with
+     a palette token above. The picker used to point straight at --forest,
+     --mint, --sage and friends, and that coupled two jobs with different
+     requirements. The palette tokens are chosen for their roles in the page:
+     --mint (0.9) and --sage (0.82) are tinted PANEL BACKGROUNDS, so being a
+     whisker away from the cream paper is exactly right for them. As the fill
+     of a small avatar leaf on that same paper it is exactly wrong -- the leaf
+     all but vanished, which is why LeafAvatar carries an ink contour to drag
+     it back into view.
+
+     The six here are tuned as a SET instead: one lightness band (0.50-0.75)
+     and one chroma band (0.055-0.125), so no option is dramatically louder or
+     fainter than its neighbours and each is legible on cream unaided.
+
+       - mint moved 165 -> 190, away from --forest's 168. Three of the six
+         used to sit within 13 degrees of each other and separate only by
+         lightness, so half the picker read as one green at three exposures.
+       - bark moved 130 -> 55 at chroma 0.02 -> 0.055. At two hundredths of
+         chroma it was grey with an olive cast, and read as dirty next to
+         terracotta rather than as wood.
+       - forest, terracotta and gold barely move; they are the three that
+         already worked, and the brand anchor should stay put.
+
+     The IDS are unchanged, which matters: `forest`, `sage`, `mint`,
+     `terracotta`, `gold` and `bark` are pinned by the students_avatar_colour_check
+     constraint AND re-validated inside set_avatar_leaf(), so renaming one is a
+     migration, not a CSS edit. Only the values changed here, so every avatar
+     already stored keeps working and simply looks better.
+     --------------------------------------------------------------------- */
+  --leaf-forest: oklch(0.55 0.095 168);
+  --leaf-sage: oklch(0.67 0.055 150);
+  --leaf-mint: oklch(0.75 0.075 190);
+  --leaf-terracotta: oklch(0.66 0.125 42);
+  --leaf-gold: oklch(0.75 0.115 85);
+  --leaf-bark: oklch(0.5 0.055 55);
+
   --background: var(--cream);
   --foreground: var(--ink);
   --card: oklch(0.985 0.008 92);

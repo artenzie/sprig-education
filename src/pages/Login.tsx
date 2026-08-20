@@ -76,9 +76,8 @@ function Login() {
       </section>
 
       <footer className="border-t border-border/60">
-        <div className="mx-auto flex max-w-[1180px] items-center justify-between px-10 py-6 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+        <div className="mx-auto flex max-w-[1180px] items-center justify-center px-10 py-6 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
           <span>Sprig · A field guide to money</span>
-          <span>Anonymous · Free · UK · Ages 13–14</span>
         </div>
       </footer>
     </div>
@@ -187,13 +186,20 @@ function StudentBox() {
           </button>
         </form>
 
+        {/* The "Sign Up" half of the nav's Login / Sign Up lands here. There is
+            no student signup form and there is not meant to be one: an account
+            is a nickname and PIN handed out by a teacher, which is also what
+            keeps students anonymous. So this says where accounts actually come
+            from rather than offering a form that could not work. */}
         <div className="mt-auto pt-10">
           <div className="h-px w-full bg-border/70" />
           <p className="mt-5 text-[13px] leading-[1.7] text-muted-foreground">
             Don't have an account?{" "}
             <span className="text-foreground">
               Ask your teacher or parent.
-            </span>
+            </span>{" "}
+            There's no sign-up form — accounts are handed out in class, so
+            nobody has to give us a name or an email.
           </p>
         </div>
       </div>

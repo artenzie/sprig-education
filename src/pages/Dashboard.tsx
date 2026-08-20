@@ -179,9 +179,8 @@ function Dashboard() {
       </main>
 
       <footer className="border-t border-border/60">
-        <div className="mx-auto flex max-w-[1280px] items-center justify-between px-10 py-6 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+        <div className="mx-auto flex max-w-[1280px] items-center justify-center px-10 py-6 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
           <span>Sprig · A field guide to money</span>
-          <span>V1</span>
         </div>
       </footer>
 

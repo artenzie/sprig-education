@@ -72,11 +72,13 @@ function Landing() {
               <em className="font-normal italic text-forest">not a textbook.</em>
             </h2>
             <p className="mt-8 max-w-sm text-[14.5px] leading-[1.8] text-muted-foreground">
-              Sprig is a free, interactive financial literacy platform made for
-              UK students aged{" "}
-              <span className="text-foreground">13–14 (Year 8–9)</span>. No
-              exams. No jargon. Short lessons and real scenarios, drawn from
-              real life.
+              Sprig is a free, interactive financial literacy platform made for{" "}
+              <span className="text-foreground">
+                younger teenagers who are curious about money
+              </span>
+              . No exams. No jargon. Short lessons and real scenarios, drawn
+              from real life. Everything is UK-based — pounds, VAT, FSCS
+              protection and the Bank of England.
             </p>
           </div>
 
@@ -293,9 +295,8 @@ function Landing() {
       </section>
 
       <footer className="border-t border-border/60">
-        <div className="mx-auto flex max-w-[1240px] items-center justify-between px-10 py-6 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
+        <div className="mx-auto flex max-w-[1240px] items-center justify-center px-10 py-6 font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
           <span>Sprig · A field guide to money</span>
-          <span>Ed. 03 · Winter</span>
         </div>
       </footer>
     </div>

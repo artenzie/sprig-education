@@ -98,13 +98,23 @@ export const LEAF_SHAPES: LeafShape[] = [
   },
 ];
 
+// These point at the --leaf-* tokens rather than the palette tokens of the
+// same name. The long note beside them in src/index.css explains why: a token
+// tuned to work as a tinted panel background is not automatically a colour you
+// can draw a small leaf with, and --mint and --sage were both cases of that.
+//
+// The ids below are load-bearing beyond this file. They are written into
+// students.avatar_colour and pinned by students_avatar_colour_check plus a
+// second check inside set_avatar_leaf(), so adding, removing or renaming one
+// needs a migration alongside the edit. Labels and tokens are client-side only
+// and can change freely.
 export const LEAF_COLOURS: LeafColour[] = [
-  { id: "forest", label: "Forest", token: "var(--forest)" },
-  { id: "sage", label: "Sage", token: "var(--sage)" },
-  { id: "mint", label: "Mint", token: "var(--mint)" },
-  { id: "terracotta", label: "Terracotta", token: "var(--terracotta)" },
-  { id: "gold", label: "Gold", token: "var(--gold)" },
-  { id: "bark", label: "Bark", token: "var(--bark)" },
+  { id: "forest", label: "Forest", token: "var(--leaf-forest)" },
+  { id: "sage", label: "Sage", token: "var(--leaf-sage)" },
+  { id: "mint", label: "Mint", token: "var(--leaf-mint)" },
+  { id: "terracotta", label: "Terracotta", token: "var(--leaf-terracotta)" },
+  { id: "gold", label: "Gold", token: "var(--leaf-gold)" },
+  { id: "bark", label: "Bark", token: "var(--leaf-bark)" },
 ];
 
 export const DEFAULT_SHAPE: LeafShapeId = "maple";

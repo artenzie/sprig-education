@@ -1,6 +1,52 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="#3F7A5C" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-  <path d="M24 42V14" />
-  <path d="M24 30c0-6.5 5-11 12-11-1 6.5-5.5 11-12 11Z" />
-  <path d="M24 22c0-5.5-4-9.5-10-9.5C15 18 18.8 22 24 22Z" />
-  <path d="M24 14c0-4.5 3-8 8-8-1 4.5-3.5 8-8 8Z" />
+<!--
+  The Sprig mark.
+
+  Deliberately the SAME drawing as SprigMark in
+  src/components/sprig/TopNav.tsx: same 26x26 viewBox, same two stems, same two
+  leaves, same forest/terracotta pairing. It used to be an unrelated design (an
+  upright stroked trunk with three outlined leaves), so the browser tab and the
+  top-left of the page showed two different logos for the same product. Keep
+  the two in step; changing one alone puts them back out of sync.
+
+  Three things differ from the component, all forced by the medium:
+
+  1. Colours are literal hex rather than CSS custom properties. An SVG loaded
+     as a favicon has no page to inherit custom properties from, so a var()
+     reference resolves to nothing and the mark renders invisible. These hexes
+     are the ones the palette in CLAUDE.md names for forest and terracotta.
+  2. Strokes are a touch heavier (1.9 and 1.7 against the component's 1.6 and
+     1.4) because a favicon is rasterised at 16px, where a 1.6 stroke on a
+     26-unit canvas lands under one device pixel and washes out.
+  3. The viewBox is cropped to the drawing rather than left at the component's
+     full 0 0 26 26. The artwork only spans x 1.7 to 23.5 and y 4.6 to 23, so
+     the original box carried a wide empty margin. In the header that margin is
+     welcome, since the mark sits beside the Sprig wordmark and wants air. In a
+     16px tab it is wasted, and it shrank the mark to near-invisibility. The
+     box below is the tightest square that holds the artwork plus a hair of
+     padding, which buys roughly 13% more drawn area at the same tab size.
+     Same paths, same coordinates, just less nothing around them.
+
+  A note for editing this comment: Chrome parses image/svg+xml strictly as XML,
+  and XML forbids a double hyphen inside a comment. Writing a CSS variable in
+  its usual form here is enough to make the whole file fail to parse, which
+  shows up as a blank favicon rather than as any kind of error. That is why the
+  paragraph above talks around the syntax instead of quoting it.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="1 2 23 23" fill="none">
+  <path
+    d="M13 22 C 13 14, 8 10, 5 8"
+    stroke="#3F7A5C"
+    stroke-width="1.9"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <path
+    d="M13 16 C 15 14, 18 13, 21 12"
+    stroke="#3F7A5C"
+    stroke-width="1.7"
+    stroke-linecap="round"
+    fill="none"
+  />
+  <ellipse cx="4" cy="7" rx="2.4" ry="1.3" transform="rotate(-30 4 7)" fill="#3F7A5C" />
+  <ellipse cx="21.4" cy="11.6" rx="2.2" ry="1.2" transform="rotate(20 21.4 11.6)" fill="#E07A3F" opacity="0.9" />
 </svg>

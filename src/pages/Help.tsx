@@ -13,7 +13,7 @@ const SECTIONS: Section[] = [
     items: [
       {
         q: "What is Sprig?",
-        a: "Sprig is a calm, plain-English way to learn about money — built for students in Year 8 and 9. You grow a little each lesson, from spotting spending traps to understanding how banks and interest actually work.",
+        a: "Sprig is a calm, plain-English way to learn about money — built for younger teenagers who are curious about how it works. You grow a little each lesson, from spotting spending traps to understanding how banks and interest actually work. Everything is UK-based: pounds, VAT, FSCS protection and the Bank of England.",
       },
       {
         q: "Is it free?",
@@ -126,7 +126,7 @@ function Help() {
 
         <div className="mt-24 border-t border-border pt-8 text-center">
           <div className="font-mono text-[10.5px] uppercase tracking-[0.24em] text-muted-foreground">
-            Anonymous · Free · UK · Ages 13–14
+            Sprig · A field guide to money
           </div>
         </div>
       </main>
