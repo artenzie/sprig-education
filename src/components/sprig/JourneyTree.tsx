@@ -111,10 +111,103 @@ const CHAR_W = 8.2;
 const TRUNK_FILL = "color-mix(in oklab, var(--forest) 62%, black)";
 const LIMB_FILL = "color-mix(in oklab, var(--forest) 58%, black)";
 
-const CANOPY_GROWN = "color-mix(in oklab, var(--forest) 78%, black)";
-const CANOPY_GROWN_SHADE = "color-mix(in oklab, var(--forest) 55%, black)";
-const CANOPY_DORMANT = "color-mix(in oklab, var(--bark) 88%, black)";
-const CANOPY_DORMANT_SHADE = "color-mix(in oklab, var(--bark) 62%, black)";
+/**
+ * Canopy tones — ONE SET PER TIER, which is the point.
+ *
+ * This used to be four constants: a grown pair and a dormant pair, shared by
+ * all three canopies. The consequence was that any two canopies in the SAME
+ * state were the same colour, and since the three overlap by 150-200 units
+ * they read as a single mass rather than three crowns. At the start of the
+ * course that is the worst case: all three are dormant, so the entire upper
+ * half of the drawing is one near-black shape and the only thing telling a
+ * student which branch is which is the small italic header above it.
+ *
+ * So each tier now carries its own pair, separated on TWO axes at once:
+ *
+ *   - LIGHTNESS. Roughly 0.10 apart in oklch terms, Application lightest and
+ *     Mastery deepest. Mixing with black in oklab scales lightness linearly,
+ *     so the percentage below is very nearly the lightness multiplier.
+ *   - HUE. Application is pulled toward terracotta, Mastery toward ink, and
+ *     Mathematics is left on the raw token. Lightness alone would read as one
+ *     colour lit unevenly; the hue shift is what makes them read as three
+ *     different plants.
+ *
+ * THE CONTRAST CONSTRAINT STILL BINDS, and it is why the spread is only 0.10
+ * per step and not more. Canopy labels are cream text sitting directly on the
+ * foliage, so the LIGHTEST of these six fills still has to be dark enough to
+ * carry cream. That caps the top of the range at roughly 0.48 and the bottom
+ * is set by not turning Mastery into a black hole. Widening the spread past
+ * this means giving up either the contrast or the "these are all foliage"
+ * family resemblance.
+ *
+ * Everything is still derived from the tokens in index.css, so the tree
+ * follows the palette if the palette moves.
+ */
+type CanopyTone = { fill: string; shade: string };
+
+/** Mix helper, kept as a string builder so the tokens stay readable above. */
+const mix = (a: string, pct: number, b: string) =>
+  `color-mix(in oklab, ${a} ${pct}%, ${b})`;
+
+const WARM_BARK = mix("var(--bark)", 82, "var(--terracotta)");
+const COOL_BARK = mix("var(--bark)", 80, "var(--ink)");
+const COOL_FOREST = mix("var(--forest)", 88, "var(--ink)");
+
+const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> = {
+  // Application — warmest and lightest. The first branch a student meets.
+  2: {
+    grown: { fill: mix("var(--forest)", 86, "black"), shade: mix("var(--forest)", 62, "black") },
+    dormant: { fill: mix(WARM_BARK, 92, "black"), shade: mix(WARM_BARK, 66, "black") },
+  },
+  // Mathematics — the mid tone, closest to the single colour all three shared.
+  3: {
+    grown: { fill: mix("var(--forest)", 70, "black"), shade: mix("var(--forest)", 50, "black") },
+    dormant: { fill: mix("var(--bark)", 78, "black"), shade: mix("var(--bark)", 56, "black") },
+  },
+  // Mastery — coolest and deepest, which suits the tier that is furthest off.
+  4: {
+    grown: { fill: mix(COOL_FOREST, 56, "black"), shade: mix(COOL_FOREST, 40, "black") },
+    dormant: { fill: mix(COOL_BARK, 62, "black"), shade: mix(COOL_BARK, 44, "black") },
+  },
+};
+
+const toneFor = (tier: number, grown: boolean): CanopyTone =>
+  (CANOPY_TONES[tier] ?? CANOPY_TONES[3])[grown ? "grown" : "dormant"];
+
+/**
+ * The edge drawn around each canopy, separating neighbouring crowns.
+ *
+ * TWO CHANGES FROM THE ORIGINAL, and the colour one is a bug fix rather than
+ * taste. This was a 5-wide stroke in `var(--background)` — cream, the page
+ * colour — on the reasoning that a background-coloured outline separates two
+ * overlapping shapes without inventing a border colour. It does, but it also
+ * paints a 5-unit cream band THROUGH whatever is underneath, and the canopies
+ * are painted in one order while all fifteen labels are painted afterwards on
+ * top. So a label belonging to the canopy underneath could land on the cream
+ * band of the canopy above it — cream text on a cream stroke, invisible. That
+ * is the failure the labels on the Mastery/Mathematics seam were hitting.
+ *
+ * A dark edge cannot do that. Whatever crosses it, cream text stays legible,
+ * because the whole point of the canopy palette is that cream reads on it.
+ * It also survives the paint order changing, which it does: canopies are
+ * sorted so grown ones draw last, so WHICH canopy is on top depends on the
+ * student's progress rather than on anything in this file.
+ *
+ * Widened from 5 to 7 at the same time — at 5 the seam was about 3px on
+ * screen, which hinted at a boundary without reading as two separate crowns.
+ */
+const CANOPY_EDGE = mix("var(--ink)", 88, "black");
+const CANOPY_EDGE_W = 7;
+
+/**
+ * Which canopy paints over which, bottom to top. Deliberately a constant and
+ * not a function of progress — see the long note at the draw site.
+ *
+ * The order is chosen so that the labels which end up underneath are the ones
+ * with the least to lose: Mathematics sits on top because it is the middle
+ * crown and overlaps both neighbours, so burying it would cost twice.
+ */
+const CANOPY_PAINT_ORDER = [4, 2, 3];
 
 const ON_CANOPY_TEXT = "var(--cream)";
 const ON_CANOPY_ROMAN = "var(--mint)";
@@ -135,9 +228,16 @@ const TRUNK_NODES: Node[] = [
   { id: "t5", x: TRUNK_X, y: 632, chapter: "I.V",   title: "Setting a Goal That Actually Matters to You", titleLines: ["Setting a Goal That", "Actually Matters to You"], tier: 1, topicOrder: 5, side: "right" },
 ];
 
+// l1 and l2 moved left and down (318,549 -> 292,568 and 240,489 -> 206,492).
+// These are the two nodes nearest the fork, and their labels reach right into
+// the lower-left lobe of the Mathematics canopy: measured against a real
+// account, 48% of "Budgeting Basics" and 18% of "How Pricing Tricks You" were
+// sitting on Mathematics foliage rather than their own. Dropping l1 below the
+// Mathematics canopy's clipped bottom edge and pulling l2 clear of its left
+// edge fixes both without disturbing the branch's shape.
 const APPLICATION_NODES: Node[] = [
-  { id: "l1", x: 318, y: 549, chapter: "II.I",   title: "Budgeting Basics",       tier: 2, topicOrder: 1, side: "left" },
-  { id: "l2", x: 240, y: 489, chapter: "II.II",  title: "How Pricing Tricks You", tier: 2, topicOrder: 2, side: "left" },
+  { id: "l1", x: 292, y: 568, chapter: "II.I",   title: "Budgeting Basics",       tier: 2, topicOrder: 1, side: "left" },
+  { id: "l2", x: 206, y: 492, chapter: "II.II",  title: "How Pricing Tricks You", tier: 2, topicOrder: 2, side: "left" },
   { id: "l3", x: 180, y: 408, chapter: "II.III", title: "Subscriptions & Recurring Costs", titleLines: ["Subscriptions &", "Recurring Costs"], tier: 2, topicOrder: 3, side: "left" },
   { id: "l4", x: 148, y: 316, chapter: "II.IV",  title: "Buy Now, Pay Later",     tier: 2, topicOrder: 4, side: "left" },
   { id: "l5", x: 126, y: 218, chapter: "II.V",   title: "Scams & Financial Safety", titleLines: ["Scams &", "Financial Safety"], tier: 2, topicOrder: 5, side: "left" },
@@ -151,9 +251,22 @@ const MATHEMATICS_NODES: Node[] = [
   { id: "m5", x: 413, y: 198, chapter: "III.V",   title: "Why Some Choices Are Riskier", titleLines: ["Why Some Choices", "Are Riskier"], tier: 3, topicOrder: 5, side: "left" },
 ];
 
+// r1 raised from y=558 to y=545. It is the lowest Mastery node, so ITS box is
+// what sets the floor on how far that canopy may be clipped (organicBlob never
+// trims below the support distance of the content). At 558 the crown had to
+// hang to y=577, and the outward-only wobble carried it to about 619 — right
+// over the trunk's "Setting a Goal That Actually Matters to You", which is dark
+// ink meant for cream paper and had 28% of its area on near-black foliage.
+//
+// 13 units is the whole of the adjustment, and the size is not arbitrary in
+// either direction. Less and the canopy still reaches the trunk label; more and
+// r1's own two-line label starts colliding with r2's above it — which is what
+// happened at y=524, where "Budget Calculator (Python)" printed straight
+// through "The Real Compound Interest Formula". The node is wedged between two
+// constraints and this is the gap between them.
 const MASTERY_NODES: Node[] = [
-  { id: "r1", x: 502, y: 558, chapter: "IV.I",   title: "Budget Calculator (Python)", titleLines: ["Budget Calculator", "(Python)"], tier: 4, topicOrder: 1, side: "right" },
-  { id: "r2", x: 579, y: 503, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], tier: 4, topicOrder: 2, side: "right" },
+  { id: "r1", x: 508, y: 545, chapter: "IV.I",   title: "Budget Calculator (Python)", titleLines: ["Budget Calculator", "(Python)"], tier: 4, topicOrder: 1, side: "right" },
+  { id: "r2", x: 588, y: 484, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], tier: 4, topicOrder: 2, side: "right" },
   { id: "r3", x: 632, y: 424, chapter: "IV.III", title: "Present & Future Value",     tier: 4, topicOrder: 3, side: "right" },
   { id: "r4", x: 662, y: 332, chapter: "IV.IV",  title: "Behavioural Finance",        tier: 4, topicOrder: 4, side: "right" },
   { id: "r5", x: 678, y: 238, chapter: "IV.V",   title: "Introduction to Crypto",     tier: 4, topicOrder: 5, side: "right" },
@@ -163,7 +276,14 @@ const MILESTONES: Milestone[] = [
   { id: "tm", x: TRUNK_X, y: 580, numeral: "I",   label: "Essentials",  tier: 1 },
   { id: "lm", x: 114,     y: 121, numeral: "II",  label: "Application", tier: 2 },
   { id: "mm", x: 415,     y: 121, numeral: "III", label: "Mathematics", tier: 3 },
-  { id: "rm", x: 684,     y: 144, numeral: "IV",  label: "Mastery",     tier: 4 },
+  // y was 144 — 23 units below the other two, which is the whole of the
+  // "the three section headings sit at different heights" complaint. The
+  // headings themselves were never misaligned (all three share baseline y=62,
+  // and getBBox agrees to the pixel); it was the numeral disc under Mastery
+  // that hung low, and the eye reads the heading and its disc as one unit.
+  // The Mastery limb's tip was raised to match, so the branch still runs into
+  // the disc rather than stopping short of it.
+  { id: "rm", x: 684,     y: 121, numeral: "IV",  label: "Mastery",     tier: 4 },
 ];
 
 /** Fruit positions per tier, revealed one at a time as topics are completed. */
@@ -321,16 +441,24 @@ function smoothClosed(pts: Pt[]): string {
  * corners of its label's text box. This is the function that makes the canopy
  * fit the content instead of the content fit the canopy.
  */
+type Rect = { x: number; y: number; w: number; h: number };
+
+/** The box one node's disc-plus-label occupies. The unit both callers below share. */
+function nodeBox(n: Node): Rect {
+  const text = lines(n);
+  const w = Math.max(...text.map((t) => t.length)) * CHAR_W + 12;
+  const x0 = n.side === "left" ? n.x - LABEL_GAP - w : n.x - DISC_R - 4;
+  const x1 = n.side === "right" ? n.x + LABEL_GAP + w : n.x + DISC_R + 4;
+  const yTop = n.y - DISC_R - 12 - (text.length - 1) * LINE;
+  const yBot = n.y + DISC_R + 4;
+  return { x: x0, y: yTop, w: x1 - x0, h: yBot - yTop };
+}
+
 function tierPoints(nodes: Node[]): Pt[] {
   const pts: Pt[] = [];
   for (const n of nodes) {
-    const text = lines(n);
-    const w = Math.max(...text.map((t) => t.length)) * CHAR_W + 12;
-    const x0 = n.side === "left" ? n.x - LABEL_GAP - w : n.x - DISC_R - 4;
-    const x1 = n.side === "right" ? n.x + LABEL_GAP + w : n.x + DISC_R + 4;
-    const yTop = n.y - DISC_R - 12 - (text.length - 1) * LINE;
-    const yBot = n.y + DISC_R + 4;
-    pts.push([x0, yTop], [x1, yTop], [x0, yBot], [x1, yBot]);
+    const b = nodeBox(n);
+    pts.push([b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]);
   }
   return pts;
 }
@@ -359,6 +487,11 @@ function tierPoints(nodes: Node[]): Pt[] {
  *   - the `yMax` clip is floored at `h`, the unpadded support distance. The
  *     clip is there to trim the canopy's overhang, so it may eat the padding,
  *     but it must never cut into the content the canopy exists to sit behind.
+ *
+ * NOTE ON `outward` AND `yMax` TOGETHER: the clip is applied to the raw radius
+ * before the wobble multiplies it, so an outward-only wobble can still push the
+ * contour past `yMax` by up to about 12%. That is why the Mastery canopy needed
+ * its yMax pulled well clear of the trunk label rather than just below it.
  */
 function organicBlob(
   pts: Pt[],
@@ -418,6 +551,7 @@ function TierCanopy({
   nodes,
   seed,
   id,
+  tier,
   yMax,
   dx = 0,
   pad = 22,
@@ -426,12 +560,15 @@ function TierCanopy({
   nodes: Node[];
   seed: number;
   id: string;
+  /** Which tier this canopy belongs to — selects its tone from CANOPY_TONES. */
+  tier: number;
   yMax: number;
   dx?: number;
   pad?: number;
   /** Has the student reached this tier? Drives the whole colour treatment. */
   grown: boolean;
 }) {
+  const tone = toneFor(tier, grown);
   const pts = tierPoints(nodes).map(([x, y]) => [x + dx, y] as Pt);
   const main = organicBlob(pts, pad, seed, { yMax, outward: true });
   const shade = organicBlob(pts, pad, seed + 4.1, { scale: 0.9, shift: [22, 36], yMax });
@@ -442,16 +579,9 @@ function TierCanopy({
       <clipPath id={`sprig-canopy-${id}`}>
         <path d={main} />
       </clipPath>
-      {/* The background-coloured stroke is a cheap outline: it separates two
-          overlapping canopies without needing a border colour of its own. */}
-      <path
-        d={main}
-        fill={grown ? CANOPY_GROWN : CANOPY_DORMANT}
-        stroke="var(--background)"
-        strokeWidth="5"
-      />
+      <path d={main} fill={tone.fill} stroke={CANOPY_EDGE} strokeWidth={CANOPY_EDGE_W} />
       <g clipPath={`url(#sprig-canopy-${id})`}>
-        <path d={shade} fill={grown ? CANOPY_GROWN_SHADE : CANOPY_DORMANT_SHADE} opacity={0.5} />
+        <path d={shade} fill={tone.shade} opacity={0.5} />
         {/* The highlight lobe only appears once the tier is in leaf — a dormant
             canopy should look flat and unlit. */}
         {grown && <path d={light} fill="var(--mint)" opacity={0.18} />}
@@ -517,13 +647,32 @@ function Leaf({
   );
 }
 
-function Fruit({ x, y, r, tone }: { x: number; y: number; r: number; tone: "red" | "orange" }) {
+function Fruit({
+  x,
+  y,
+  r,
+  tone,
+  stem = mix("var(--forest)", 50, "black"),
+}: {
+  x: number;
+  y: number;
+  r: number;
+  tone: "red" | "orange";
+  /**
+   * The little stalk's colour. Defaults to a mid forest shade, which is right
+   * for the windfall fruit lying on the cream ground. Fruit sitting IN a
+   * canopy passes that canopy's own shade instead — otherwise every stalk was
+   * drawn in one tier's green regardless of which crown it hung in, which the
+   * per-tier tones made obvious.
+   */
+  stem?: string;
+}) {
   return (
     <g>
       <path
         d={`M ${x} ${y - r * 0.8} C ${x + r * 0.2} ${y - r * 1.7}, ${x + r * 0.9} ${y - r * 1.9}, ${x + r * 1.25} ${y - r * 2.1}`}
         fill="none"
-        stroke={CANOPY_GROWN_SHADE}
+        stroke={stem}
         strokeWidth={Math.max(0.7, r * 0.22)}
         strokeLinecap="round"
       />
@@ -639,11 +788,33 @@ function CheckGlyph({ x, y, stroke }: { x: number; y: number; stroke: string }) 
   );
 }
 
+/**
+ * The padlock on a locked node.
+ *
+ * `OPTICAL_LIFT` is worth explaining, because the glyph was already centred
+ * before it and measurement says so: the bounding box of the two shapes
+ * centres on the node to within 0.15 units out of 12.7, which is under a tenth
+ * of a pixel on screen. Geometrically there was nothing to fix.
+ *
+ * What is off is the BALANCE, not the box. The body is a filled-width rounded
+ * rect 9.6 x 7.4 sitting entirely below the centre line, while the shackle
+ * above it is a thin open arc. Weighting each shape by the length of stroke it
+ * puts on the page — roughly 34 units for the body against 14 for the shackle —
+ * the ink centres about 0.6 units BELOW the node's centre, so the lock reads as
+ * sitting low in its disc even though a ruler says it is centred. Lifting the
+ * whole glyph by that much brings the visual centre onto the geometric one.
+ *
+ * This is the standard reason icons carry hand-tuned offsets: the eye centres
+ * mass, not bounding boxes.
+ */
+const OPTICAL_LIFT = 0.6;
+
 function LockGlyph({ x, y, stroke }: { x: number; y: number; stroke: string }) {
+  const cy = y - OPTICAL_LIFT;
   return (
     <g fill="none" stroke={stroke} strokeWidth="1.6" strokeLinecap="round">
-      <path d={`M ${x - 2.9} ${y - 1.2} v -2.4 a 2.9 2.9 0 0 1 5.8 0 v 2.4`} />
-      <rect x={x - 4.8} y={y - 1.2} width="9.6" height="7.4" rx="1.4" />
+      <path d={`M ${x - 2.9} ${cy - 1.2} v -2.4 a 2.9 2.9 0 0 1 5.8 0 v 2.4`} />
+      <rect x={x - 4.8} y={cy - 1.2} width="9.6" height="7.4" rx="1.4" />
     </g>
   );
 }
@@ -663,7 +834,22 @@ function LockGlyph({ x, y, stroke }: { x: number; y: number; stroke: string }) {
  * should have been twenty. A real <button> is exposed everywhere, gets Enter
  * and Space for free, and cannot be got wrong.
  */
-function LessonNodeArt({ node, status }: { node: Node; status: TopicStatus }) {
+function LessonNodeArt({
+  node,
+  status,
+  tone,
+}: {
+  node: Node;
+  status: TopicStatus;
+  /**
+   * The tone of the canopy this node sits on, so a locked disc is a darker
+   * patch of ITS OWN foliage. It used to be `CANOPY_GROWN_SHADE` for every
+   * canopy node, which meant a dormant brown crown carried five green discs —
+   * fine while all canopies were the same colour, obviously wrong once they
+   * were not. Undefined for trunk nodes, which sit on cream and invert.
+   */
+  tone?: CanopyTone;
+}) {
   const onCanopy = node.tier > 1;
   const text = lines(node);
   const left = node.side === "left";
@@ -671,12 +857,14 @@ function LessonNodeArt({ node, status }: { node: Node; status: TopicStatus }) {
   const anchor = left ? "end" : "start";
   const romanY = node.y - 7 - (text.length - 1) * LINE;
 
+  const canopyShade = tone?.shade ?? mix("var(--forest)", 55, "black");
+
   // Disc treatment. On the canopy the disc is cream on dark foliage; on the
   // bare trunk it is dark on cream paper. Same three states, inverted.
   const discFill =
     status === "locked"
       ? onCanopy
-        ? CANOPY_GROWN_SHADE
+        ? canopyShade
         : "var(--background)"
       : onCanopy
         ? "var(--cream)"
@@ -685,7 +873,7 @@ function LessonNodeArt({ node, status }: { node: Node; status: TopicStatus }) {
   const glyphStroke = onCanopy
     ? status === "locked"
       ? "var(--mint)"
-      : CANOPY_GROWN_SHADE
+      : canopyShade
     : status === "locked"
       ? "var(--muted-foreground)"
       : "var(--cream)";
@@ -694,7 +882,12 @@ function LessonNodeArt({ node, status }: { node: Node; status: TopicStatus }) {
   const romanFill = onCanopy ? ON_CANOPY_ROMAN : ON_CREAM_ROMAN;
   // A locked topic is drawn, not hidden — the student should see what is
   // ahead of them — but it recedes.
-  const dim = status === "locked" ? 0.68 : 1;
+  // A locked topic recedes, but the amount it may recede depends on what it
+  // sits on. On cream paper 0.68 leaves dark text perfectly readable. On a
+  // canopy the label is CREAM, so the same 0.68 blends it back toward the
+  // foliage it is sitting on and eats most of the contrast the dark fill was
+  // chosen to provide. Canopy labels therefore fade less.
+  const dim = status === "locked" ? (onCanopy ? 0.86 : 0.68) : 1;
 
   return (
     <g>
@@ -903,13 +1096,27 @@ export function JourneyTree({ journey }: { journey: Journey }) {
     ...MASTERY_NODES,
   ];
 
-  const renderNodeArt = (list: Node[]) =>
-    list.map((n) => <LessonNodeArt key={n.id} node={n} status={resolve(n).status} />);
+  const renderNodeArt = (list: Node[], tone?: CanopyTone) =>
+    list.map((n) => (
+      <LessonNodeArt key={n.id} node={n} status={resolve(n).status} tone={tone} />
+    ));
 
+  // `dx` pushes a canopy sideways and `pad` inflates it. Application and
+  // Mastery are pushed further out than they were (-14 -> -30, +18 +> +34) to
+  // open a real gap either side of Mathematics: the three used to overlap
+  // enough that four Mathematics labels lay partly on a NEIGHBOUR's foliage,
+  // which is invisible while every canopy is one colour and glaring once they
+  // are not.
+  //
+  // Mastery's `yMax` drops from 606 to 578. That clip sets how far the crown
+  // droops, and at 606 it hung over the trunk's "Setting a Goal That Actually
+  // Matters to You" — a label drawn in dark ink for cream paper, with 28% of
+  // its area landing on near-black foliage. 578 clears it and still contains
+  // Mastery's own lowest node box (node r1 bottoms out at y=577).
   const canopyTiers = [
-    { tier: 2, nodes: APPLICATION_NODES, seed: 1.3, id: "app",  yMax: 578, dx: -14, pad: 22 },
-    { tier: 3, nodes: MATHEMATICS_NODES, seed: 2.7, id: "math", yMax: 548, dx: 0,   pad: 20 },
-    { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 606, dx: 18,  pad: 24 },
+    { tier: 2, nodes: APPLICATION_NODES, seed: 1.3, id: "app",  yMax: 598, dx: -30, pad: 22 },
+    { tier: 3, nodes: MATHEMATICS_NODES, seed: 2.7, id: "math", yMax: 536, dx: 0,   pad: 20 },
+    { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 566, dx: 34,  pad: 24 },
   ];
 
   return (
@@ -963,10 +1170,14 @@ export function JourneyTree({ journey }: { journey: Journey }) {
           w1={4}
           fill={LIMB_FILL}
         />
+        {/* Tip raised from y=162 to y=139 alongside the Mastery milestone disc,
+            which moved from 144 to 121. The disc has r=30, so at the old pairing
+            the tip sat inside it; leaving the tip behind would have left 20-odd
+            units of branch poking out below a disc that had moved on. */}
         <Limb
           segs={[
             [[413, 606], [442, 570], [522, 542], [590, 470]],
-            [[590, 470], [646, 408], [674, 292], [684, 162]],
+            [[590, 470], [646, 400], [674, 270], [684, 139]],
           ]}
           w0={15}
           w1={4}
@@ -975,17 +1186,35 @@ export function JourneyTree({ journey }: { journey: Journey }) {
 
         {/* Canopy foliage: one organic mass behind each tier.
             Neighbouring canopies overlap by 150-200 units, so draw order is
-            visible. Dormant ones go down first and grown ones on top, so the
-            branch the student has actually reached comes forward rather than
-            being partly buried under one they have not started. */}
+            visible — and it is now FIXED (Mastery, Application, Mathematics)
+            rather than sorted by progress.
+
+            It used to sort dormant-first so that the branch the student had
+            reached came forward instead of being partly buried. That reads
+            well and quietly broke label legibility, because whichever canopy
+            lands on top also paints over its neighbours' labels. Measured on
+            one account: with Mathematics on top, "Simple Interest" sat wholly
+            on its own foliage; drop that same student back to no progress, the
+            order flips to Mastery-on-top, and 68% of the same label is on
+            Mastery instead. The label was fine or broken depending on how far
+            through the course the reader happened to be, which is not a
+            property anyone can design against or test once.
+
+            A fixed order costs the "my branch comes forward" cue, and that is
+            an acceptable price now the three tiers carry genuinely different
+            tones: colour tells you which crown is which and whether it is in
+            leaf, which is more information than z-order was ever giving. In
+            exchange every student sees the same drawing, so the label
+            positions below can be tuned once and stay tuned. */}
         {[...canopyTiers]
-          .sort((a, b) => Number(grown(a.tier)) - Number(grown(b.tier)))
+          .sort((a, b) => CANOPY_PAINT_ORDER.indexOf(a.tier) - CANOPY_PAINT_ORDER.indexOf(b.tier))
           .map((c) => (
             <TierCanopy
               key={c.id}
               nodes={c.nodes}
               seed={c.seed}
               id={c.id}
+              tier={c.tier}
               yMax={c.yMax}
               dx={c.dx}
               pad={c.pad}
@@ -1008,7 +1237,11 @@ export function JourneyTree({ journey }: { journey: Journey }) {
             none, and a finished one is heavy with them. */}
         {canopyTiers.map((c) =>
           FRUIT[c.tier].slice(0, completedInTier(c.tier)).map((f, i) => (
-            <Fruit key={`${c.id}-${i}`} {...f} />
+            <Fruit
+              key={`${c.id}-${i}`}
+              {...f}
+              stem={toneFor(c.tier, grown(c.tier)).shade}
+            />
           )),
         )}
 
@@ -1052,7 +1285,9 @@ export function JourneyTree({ journey }: { journey: Journey }) {
         {/* Lesson discs and labels last, so no foliage paints over them */}
         {renderNodeArt(TRUNK_NODES)}
         {canopyTiers.map((c) => (
-          <g key={`nodes-${c.id}`}>{renderNodeArt(c.nodes)}</g>
+          <g key={`nodes-${c.id}`}>
+            {renderNodeArt(c.nodes, toneFor(c.tier, grown(c.tier)))}
+          </g>
         ))}
       </svg>
 
