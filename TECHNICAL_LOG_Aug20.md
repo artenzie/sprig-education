@@ -395,3 +395,306 @@ that felt sufficient at the time.** The leaves looked fine in code review and
 were backwards on screen. The favicon looked fine on screen and was malformed to
 a parser. Reaching for a different *kind* of check than the one you just ran is
 most of what verification is.
+
+---
+---
+
+# Part two — the journey tree's three canopies
+
+Separate piece of work, same day. Commit `1c178d3`, one file, +281/−46.
+
+The upper half of the journey tree had gone wrong: the three canopies —
+Application, Mathematics, Mastery — read as one dark mass rather than three
+crowns, and several labels were sitting on the wrong foliage. Five things were
+reported. **Two of them turned out not to be what they looked like**, and
+finding that out is most of what this half of the log is about.
+
+---
+
+## 10. Measure the complaint before believing it
+
+The five reported problems were: identical canopy colours, labels with poor
+contrast and overlaps, canopies merging into one blob, padlocks off-centre, and
+section headings at inconsistent heights.
+
+Three were real. Two were not — and *neither was imaginary either*. In both
+cases something was genuinely wrong on screen; the eye had just attributed it to
+the nearest plausible cause.
+
+**Padlocks.** Reported as "several float slightly off-centre". Measured, every
+one of them was centred:
+
+```js
+// bounding box of the lock glyph vs the cx/cy of its node disc
+{ dx: 0, dy: -0.15 }   // ...out of a glyph 12.7 units tall
+```
+
+Under a tenth of a pixel at render scale. So what was the eye seeing? Two
+things. First, **locked discs on a canopy were filled with a green shade**
+regardless of which canopy they sat on — invisible while all three canopies were
+green, conspicuous the moment Mastery went brown, and a foreign-coloured disc
+reads as a thing sitting *on* the surface rather than *in* it. Second, a real but
+different geometric fact:
+
+> A padlock's body is a filled-width rounded rect sitting entirely below the
+> centre line; the shackle above it is a thin open arc. Weight each shape by the
+> length of stroke it puts on the page — about 34 units against 14 — and the ink
+> centres roughly 0.6 units BELOW the node centre, even though the bounding box
+> is dead centre.
+
+**The eye centres mass, not bounding boxes.** That is why icon sets carry
+hand-tuned optical offsets. The glyph is now lifted by that 0.6.
+
+**Section headings.** Reported as sitting at inconsistent heights. All three
+share `y=62`, and `getBBox()` agreed to the pixel:
+
+```
+Application  baseline 62, box 37.2 → 68.2
+Mathematics  baseline 62, box 37.2 → 68.2
+Mastery      baseline 62, box 37.2 → 68.2
+```
+
+The misaligned thing was the **numeral disc** below each heading: II and III at
+`cy=121`, IV at `cy=144`. The reader takes heading-plus-disc as one unit, so a
+low disc reads as a low heading. Moved to 121, with the Mastery limb's tip
+raised from y=162 to y=139 so the branch still runs into the disc instead of
+stopping 20 units short of it.
+
+**The lesson.** A bug report is a description of a *symptom*, and the reporter's
+guess at the cause is data, not diagnosis. Both of these would have been
+"fixed" by nudging the thing that was named — and the nudge would have made a
+correct thing wrong while leaving the actual defect in place.
+
+---
+
+## 11. The real find: correct in every state, wrong as a function of data
+
+This is the one worth reading twice.
+
+The canopies overlap by 150–200 units, and all fifteen labels are painted
+*after* all three canopies. So whichever canopy is drawn last wins the overlap,
+and any label underneath it ends up on a neighbour's foliage. That much is
+ordinary z-order.
+
+The problem was **which canopy is drawn last**:
+
+```tsx
+{[...canopyTiers]
+  .sort((a, b) => Number(grown(a.tier)) - Number(grown(b.tier)))
+```
+
+Dormant first, grown last — so the branch the student had actually reached came
+forward instead of being buried. A good intention, and it reads well.
+
+But `grown(tier)` is **a function of the student's progress**. So the paint order
+is a function of the student's progress. So which labels are legible is a
+function of the student's progress. Measured on one account, same code, same
+labels, only the progress rows differing:
+
+| student state | "Simple Interest" on the wrong canopy |
+|---|---|
+| tiers 1–2 done, 3.5 current | **0%** |
+| no progress at all | **68%** |
+
+Nothing in the file said so. There is no state in which the rendering is
+*wrong* — for any given student it does exactly what it was told. It is wrong
+only across states, and only if you happen to look at more than one.
+
+**Why this class of bug is nasty.** You cannot catch it by reading the draw
+code, because the draw code is correct. You cannot catch it by looking at the
+screen, because the screen is correct. You catch it only by rendering the same
+component against *different data* and comparing — which is why the seeded
+account below mattered more than any amount of staring.
+
+The fix is to make the order a constant:
+
+```tsx
+const CANOPY_PAINT_ORDER = [4, 2, 3];   // Mastery, Application, Mathematics
+```
+
+Mathematics goes on top because it is the middle crown and overlaps both
+neighbours, so burying it would cost twice.
+
+**What it costs.** The "my branch comes forward" cue. That was worth having when
+all canopies were the same colour and z-order was the only thing distinguishing
+them. It is worth much less now that each tier has its own tone, which tells you
+both which crown you are looking at *and* whether it is in leaf — strictly more
+information than depth was carrying.
+
+**What it buys.** Every student sees the same drawing. That is what makes the
+label positions tunable at all: tune once, stays tuned. A layout you can only
+verify per-student is a layout you cannot verify.
+
+---
+
+## 12. One token per tier, and the contrast ceiling
+
+The canopy palette was four constants — a grown pair and a dormant pair — shared
+by all three tiers. So any two canopies in the same state were *the same
+colour*. At the start of the course all three are dormant, which is the worst
+case: the entire upper half of the drawing is one near-black shape, and the only
+thing naming each branch is a small italic header above it.
+
+Each tier now carries its own pair, separated on two axes at once. Measured off
+the rendered fills, dormant:
+
+| tier | oklab lightness |
+|---|---|
+| Application | 0.448 |
+| Mathematics | 0.343 |
+| Mastery | 0.250 |
+
+Roughly 0.10 apart, plus a hue shift — Application pulled toward terracotta,
+Mastery toward ink, Mathematics left on the raw token. **Lightness alone reads
+as one colour lit unevenly; the hue shift is what makes them read as three
+different plants.**
+
+The spread stops at 0.10 per step for a reason worth stating, because it is the
+kind of constraint that looks like timidity until you know it:
+
+> Canopy labels are cream text sitting *directly* on the foliage. So the
+> LIGHTEST of the six fills still has to be dark enough to carry cream. That
+> caps the top of the range near 0.48. The bottom is capped by not turning
+> Mastery into a hole in the page. Widening past this means giving up either
+> the contrast or the family resemblance that makes all three read as foliage.
+
+Same shape of problem as the avatar tokens in part one: a colour's value is set
+by its *job*, and when two jobs conflict the answer is more tokens, not a
+compromise value.
+
+---
+
+## 13. A cream separator that erased its own labels
+
+The seam between crowns was a 5-wide stroke in `var(--background)` — the page's
+own cream. The reasoning is sound: a background-coloured outline separates two
+overlapping shapes without inventing a border colour.
+
+It also paints a 5-unit **cream band through whatever is underneath**. And the
+canopies are painted in one pass, all fifteen labels afterwards on top. So a
+label belonging to the canopy *below* could land on the cream band of the canopy
+*above* it — cream text on a cream stroke, gone.
+
+A dark edge cannot do that. Whatever crosses it stays legible, because the whole
+premise of the canopy palette is that cream reads on it. Now `--ink`-based and
+7 wide.
+
+Note the shape of this bug: the stroke was doing its job perfectly on the
+element it belonged to, and doing damage to an element three hundred lines away
+that it had never heard of. **A background-coloured anything is a hole punched
+in everything beneath it**, and that is easy to forget when the thing beneath is
+drawn by different code at a different time.
+
+---
+
+## 14. A fix that was correct and still had to be reverted
+
+The principled fix for labels-on-the-wrong-canopy is to stop each canopy
+painting over the others' label boxes at all — mask them out, let the label's
+own foliage show through, and the result no longer depends on draw order.
+
+Implemented with an SVG `<mask>`: a white full-canvas rect, minus a black
+rounded rect per foreign label box. It worked exactly as designed, and it looked
+like a rendering glitch — clean rectangular steps bitten out of a hand-drawn
+silhouette, which pulls the eye far harder than the overlap ever did.
+
+Second attempt: ellipses instead of rects, on the theory that a curved scallop
+passes for the gap between two clumps of leaves. That was worse, and it exposed
+the flaw in the whole approach:
+
+> **Different tiers' label boxes overlap each other in space.** So subtracting a
+> *foreign* tier's box also strips canopy from under the tier's *own* labels —
+> and what shows through there is not a neighbour's foliage, it is the cream
+> page. The fix for "cream text on the wrong green" produced "cream text on
+> cream", which is the strictly worse failure.
+
+Reverted both. The lesson is not "don't try things" — trying it is how the
+overlap between label boxes got discovered at all. It is that **a fix which
+satisfies the stated requirement can still be worse than the bug**, and the only
+way to know is to render it and look.
+
+*(A footnote on the revert itself: it was done by slicing the file between two
+text anchors, and `organicBlob` happened to sit between them, so it went too.
+`tsc` caught it instantly — three "Cannot find name" errors. Restored from
+`git show HEAD:` and diffed to prove it was byte-identical. Anchor-based edits
+are fine; anchor-based **deletions** need you to know what is in the middle.)*
+
+---
+
+## 15. What actually fixed the labels, and what was left alone
+
+With paint order fixed, the remaining collisions could be tuned once. Four
+canopy nodes moved and three `yMax` clips were retuned:
+
+| label | area on the wrong tier's foliage |
+|---|---|
+| I.V "Setting a Goal That Actually Matters to You" | 28% → **7%** |
+| II.I "Budgeting Basics" | 48% → **5%** |
+| II.II "How Pricing Tricks You" | 18% → **0%** |
+| label-vs-label collisions | 1 → **0** |
+
+`r1` is the interesting one, because it is **wedged between two constraints**:
+
+- It is the lowest Mastery node, and `organicBlob` never trims a canopy below
+  the support distance of its content — so `r1`'s box is what sets how far that
+  crown may be clipped. Too low, and the crown reaches the trunk's dark-ink
+  "Setting a Goal…" label, which is drawn for cream paper.
+- Too high, and `r1`'s own two-line label prints through `r2`'s above it. At
+  y=524 "Budget Calculator (Python)" ran straight through "The Real Compound
+  Interest Formula".
+
+y=545 is the gap between them. Thirteen units of travel, with a wall on each
+side.
+
+**The residual was left in.** 7% / 5% / 2% is corner-grazing at label edges.
+Removing it entirely needs the three node clusters given non-overlapping
+horizontal bands, which needs a wider viewBox and every element rendering about
+6% smaller — a real trade, and the kind of call that belongs to whoever owns the
+design rather than to whoever is fixing the bug. Recording *why* a known
+imperfection is still there is part of the job; a number in a log is cheaper
+than rediscovering the constraint in six months.
+
+---
+
+## 16. How this was verified
+
+The component takes a `journey` prop and nothing else, which is what made this
+testable at all. A script seeded one test account to a chosen progress shape,
+and the same measurement ran against each:
+
+1. **All three dormant** — a student who has just started. The original
+   complaint state.
+2. **One grown, two dormant** — Application in leaf, the rest not.
+3. **Two grown, one dormant, one topic current** — the mixed state asked for.
+
+The measurements were taken from the live DOM rather than by eye, because "does
+this label sit on its own canopy" is not a question eyes answer reliably:
+
+- `isPointInFill()` on each canopy path, sampled across each label's box, to ask
+  **which canopy is painted on top at this point** — not merely which canopies
+  contain it, which was the first and wrong version of this check.
+- `getBBox()` on every text node, grouped by owning node, for label-vs-label
+  collisions. Grouping mattered: ungrouped, a node's own numeral and its own
+  wrapped second line register as "overlaps", and the real signal drowns.
+- `getBBox()` on each lock glyph against its disc's `cx`/`cy`.
+- `getComputedStyle().fill` on each canopy, to check the tones landed where the
+  palette said rather than where the source said.
+
+States 1, 2 and 3 returning **identical** residuals is the actual proof that the
+paint-order fix worked. Before it, the same measurement returned different
+numbers for each — which is how the bug was found in the first place.
+
+---
+
+## The thread running through both halves
+
+Part one ended on *the check that found things was never the one that felt
+sufficient*. Part two is the same idea one level up.
+
+The leaves were wrong in a way you could see. The favicon was wrong in a way
+only a parser could see. The paint order was wrong in a way **neither the code
+nor the screen could show you** — only the same code, rendered against different
+data, put side by side.
+
+Each of those needs a different instrument. Reading harder does not substitute
+for any of them.
