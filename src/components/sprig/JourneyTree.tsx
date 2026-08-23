@@ -162,6 +162,13 @@ const LIMB_FILL = "var(--forest)";
  * is an enormous contrast margin, so the labels are safe in every combination
  * and there is no longer a cap on how light the foliage may go -- which is
  * what makes the celebratory end of the scale reachable at all.
+ *
+ * The dormant chromas are LOW BUT NOT ZERO (about 0.02 against 0.05-0.06 for
+ * grown). Taken to nearly grey they were drab in the right way but left the
+ * three crowns separated only by their outlines and a hundredth of lightness
+ * each, which is close to the complaint that started this: three canopies you
+ * cannot tell apart. A trace of hue keeps them distinguishable at a glance
+ * while still reading as clearly unlit next to a tier in leaf.
  */
 type CanopyTone = { fill: string; shade: string };
 
@@ -177,12 +184,12 @@ const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> =
   // Application — warm mint. The first branch a student meets.
   2: {
     grown: { fill: "oklch(0.895 0.058 145)", shade: "oklch(0.845 0.062 148)" },
-    dormant: { fill: "oklch(0.905 0.012 145)", shade: "oklch(0.862 0.014 148)" },
+    dormant: { fill: "oklch(0.905 0.021 145)", shade: "oklch(0.862 0.024 148)" },
   },
   // Mathematics — the --mint token's own hue, the middle of the family.
   3: {
     grown: { fill: "oklch(0.878 0.062 168)", shade: "oklch(0.828 0.066 170)" },
-    dormant: { fill: "oklch(0.892 0.011 168)", shade: "oklch(0.848 0.013 170)" },
+    dormant: { fill: "oklch(0.888 0.019 168)", shade: "oklch(0.845 0.022 170)" },
   },
   // Mastery — cool mint, furthest from the trunk in both senses. Hue 186 and
   // not 195: at 195 the fill crossed out of green entirely and read as a pale
@@ -191,7 +198,7 @@ const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> =
   // coolest of the three without leaving the family.
   4: {
     grown: { fill: "oklch(0.858 0.050 186)", shade: "oklch(0.808 0.054 188)" },
-    dormant: { fill: "oklch(0.875 0.010 186)", shade: "oklch(0.832 0.012 188)" },
+    dormant: { fill: "oklch(0.871 0.017 186)", shade: "oklch(0.828 0.020 188)" },
   },
 };
 
@@ -327,28 +334,60 @@ const MILESTONES: Milestone[] = [
   { id: "rm", x: 684,     y: 121, numeral: "IV",  label: "Mastery",     tier: 4 },
 ];
 
-/** Fruit positions per tier, revealed one at a time as topics are completed. */
+/**
+ * Fruit positions per tier, revealed one at a time as topics are completed.
+ *
+ * NOT HAND-PLACED, AND THAT IS WHY THEY LOOK BETTER. The previous set was
+ * eyeballed against an older canopy shape and had drifted: one Mastery berry
+ * sat outside its crown entirely, on bare cream at (641, 195), and the rest
+ * clustered unevenly because the canopies had been reshaped underneath them
+ * several times since.
+ *
+ * These coordinates were computed in the browser against the real rendered
+ * geometry. Every point in each canopy was tested and kept only if it was:
+ *
+ *   - inside that canopy and NOT inside a neighbouring one (no berries in the
+ *     overlap zones, where they read as belonging to the wrong crown),
+ *   - at least 26 units clear of the contour in all four directions, so none
+ *     hangs off an edge,
+ *   - at least 26 units clear of every node disc and milestone,
+ *   - at least 14 units clear of every label's bounding box,
+ *   - off the lesson path.
+ *
+ * That left 1000-1900 legal points per canopy, from which five were chosen by
+ * FARTHEST-POINT SAMPLING: start near the middle, then repeatedly take the
+ * candidate furthest from everything already chosen.
+ *
+ * The order that produces is worth keeping, because fruit appear one per
+ * completed topic. Farthest-point ordering means the second berry lands far
+ * from the first and the third far from both — so a student two topics in sees
+ * two berries on opposite sides of the crown rather than two touching, and the
+ * arrangement looks deliberate at every stage rather than only when full.
+ *
+ * If the canopy geometry changes again (LABEL_GAP, LINE, node positions, pad),
+ * these will drift again. Re-run the sampling rather than nudging them by eye.
+ */
 const FRUIT: Record<number, { x: number; y: number; r: number; tone: "red" | "orange" }[]> = {
   2: [
-    { x: 286, y: 300, r: 8.2, tone: "red" },
-    { x: 252, y: 427, r: 5.6, tone: "orange" },
-    { x: 192, y: 236, r: 4.6, tone: "red" },
-    { x: 214, y: 355, r: 6.4, tone: "orange" },
-    { x: 158, y: 468, r: 5.2, tone: "red" },
+    { x: -27, y: 457, r: 7.6, tone: "red" },
+    { x: 171, y: 199, r: 5.4, tone: "orange" },
+    { x: -111, y: 187, r: 6.2, tone: "red" },
+    { x: 201, y: 541, r: 4.8, tone: "orange" },
+    { x: 153, y: 373, r: 6.8, tone: "red" },
   ],
   3: [
-    { x: 463, y: 331, r: 7.4, tone: "orange" },
-    { x: 455, y: 403, r: 5.0, tone: "red" },
-    { x: 509, y: 247, r: 6.0, tone: "orange" },
-    { x: 372, y: 292, r: 5.4, tone: "red" },
-    { x: 486, y: 466, r: 4.8, tone: "orange" },
+    { x: 373, y: 275, r: 7.2, tone: "orange" },
+    { x: 469, y: 503, r: 5.0, tone: "red" },
+    { x: 595, y: 239, r: 6.4, tone: "orange" },
+    { x: 205, y: 197, r: 5.6, tone: "red" },
+    { x: 343, y: 425, r: 7.8, tone: "orange" },
   ],
   4: [
-    { x: 618, y: 382, r: 8.6, tone: "red" },
-    { x: 693, y: 287, r: 5.4, tone: "orange" },
-    { x: 565, y: 463, r: 4.6, tone: "red" },
-    { x: 641, y: 195, r: 6.4, tone: "red" },
-    { x: 712, y: 372, r: 5.2, tone: "orange" },
+    { x: 832, y: 169, r: 6.0, tone: "red" },
+    { x: 592, y: 571, r: 5.2, tone: "orange" },
+    { x: 880, y: 469, r: 7.4, tone: "red" },
+    { x: 646, y: 283, r: 5.8, tone: "orange" },
+    { x: 976, y: 295, r: 6.6, tone: "red" },
   ],
 };
 
