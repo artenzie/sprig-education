@@ -25,7 +25,7 @@ const SECTIONS: Section[] = [
       },
       {
         q: "Who made Sprig?",
-        a: "Sprig is built by Artem Makarov, a UK student, with input from teachers who work with this age group. It's a small, independent project — not a company trying to sell you anything.",
+        a: "Sprig is built by Artem Makarov, an international student. It's in active development, with schools and teachers invited to help shape the content as the pilot grows. It's a small, independent project — not a company trying to sell you anything.",
       },
     ],
   },

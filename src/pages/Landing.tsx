@@ -190,28 +190,45 @@ function Landing() {
               III &nbsp;·&nbsp; About me
             </div>
             <h2 className="mt-6 font-display text-[46px] font-normal leading-[1.02] tracking-[-0.03em]">
-              Hello — I'm a UK student,
+              {/* Non-breaking space so "international student," wraps as a
+                  unit. The heading was written for the shorter "a UK student"
+                  and at 46px the longer phrase broke after "international",
+                  leaving "student," stranded on a line of its own. */}
+              Hello — I'm an international&nbsp;student,
               <br />
               <em className="font-normal italic text-forest">and I built Sprig.</em>
             </h2>
 
             <div className="mt-10 space-y-6 text-[15.5px] leading-[1.85] text-muted-foreground">
               <p>
-                I grew up in the UK and, like most people my age, was never
-                really taught how money works. Not properly. Not the psychology
-                of it, not how banks actually run, not why interest matters —
-                nothing you could hold on to.
+                It started small — a project to get properly comfortable with
+                coding and development. But the idea for what it should actually
+                be came from volunteering with EDClub, well before I began
+                building. Watching how many children and teenagers simply never
+                get taught the essentials of managing money made the gap
+                impossible to ignore.
               </p>
               <p>
-                I built Sprig for the students coming after me. The goal is
-                simple: make financial understanding something young people
-                actually get to have, in a form that feels calm and honest
-                rather than scary or salesy.
+                I've lived and studied across the UK, Russia, France, Cyprus and
+                Spain, and it's the one thing missing from every single
+                curriculum I've encountered. Even growing up with real
+                advantages, I still had to lean entirely on my family to figure
+                this out — nobody taught it to me directly, anywhere. That felt
+                worth fixing, not just for people like me, but for anyone,
+                regardless of where they're starting from.
+              </p>
+              <p>
+                I've been building Sprig for the last few months, alongside my
+                A-levels in Maths, Further Maths, Physics and Computer Science.
+                My aim is to get it into as many hands as possible — every
+                school, every student, every country I can reach — because the
+                impact only grows with the number of young people it actually
+                reaches.
               </p>
               <p>
                 I work directly with schools, teachers, and organisations who
-                want to bring financial literacy to more students — quietly,
-                thoughtfully, and without cost to families.
+                want to bring this to more students — quietly, thoughtfully, and
+                always free for families.
               </p>
             </div>
           </div>
@@ -230,9 +247,16 @@ function Landing() {
                 heading="Fully anonymous"
                 body="Students never give real names. Nicknames only — always."
               />
+              {/* Was "Built with teachers" / "Every lesson is shaped alongside
+                  UK educators who work with this age group" — a finished-sounding
+                  claim about a process that is still ahead of the pilot rather
+                  than behind it. This panel is headed "A quiet promise" and sits
+                  beside two statements that are literally true (nicknames only,
+                  nothing sold), so an aspirational third one borrows credibility
+                  from them. The invitation is the honest version. */}
               <TrustItem
-                heading="Built with teachers"
-                body="Every lesson is shaped alongside UK educators who work with this age group."
+                heading="Shaped with schools"
+                body="In active development, with schools and teachers invited to help shape the content as the pilot grows."
               />
               <TrustItem
                 heading="No data sold"
