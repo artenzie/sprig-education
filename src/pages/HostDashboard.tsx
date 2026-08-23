@@ -15,6 +15,7 @@ import { HostOverviewPanel } from "@/components/sprig/host/HostOverviewPanel";
 import { HostStudentTable } from "@/components/sprig/host/HostStudentTable";
 import { HostSatisfaction } from "@/components/sprig/host/HostSatisfaction";
 import { HostFeedbackInbox } from "@/components/sprig/host/HostFeedbackInbox";
+import { HostContactRequests } from "@/components/sprig/host/HostContactRequests";
 import { HostTestPerformance } from "@/components/sprig/host/HostTestPerformance";
 
 /**
@@ -173,6 +174,8 @@ function HostDashboard() {
             />
 
             <HostFeedbackInbox messages={data.helpMessages} />
+
+            <HostContactRequests requests={data.contactRequests} />
 
             <HostTestPerformance scores={view.scores} difficulty={view.difficulty} />
           </>

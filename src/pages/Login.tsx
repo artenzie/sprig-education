@@ -5,6 +5,7 @@ import { TopNav } from "@/components/sprig/TopNav";
 import { useAuth } from "@/context/auth";
 import type { Role, Teacher } from "@/context/auth";
 import { PIN_LENGTH, keepDigits } from "@/lib/studentAuth";
+import { submitContactRequest, CONTACT_MESSAGE_MAX } from "@/lib/contact";
 
 /**
  * Where a signed-in account belongs.
@@ -73,6 +74,8 @@ function Login() {
           <StudentBox />
           <AdultBox />
         </div>
+
+        <ContactStrip />
       </section>
 
       <footer className="border-t border-border/60">
@@ -328,13 +331,176 @@ function AdultBox() {
           </button>
         </form>
 
+        {/* "Get in touch" was a plain <span> for as long as this box has
+            existed — styled like a link, doing nothing. It now moves focus to
+            the email field in ContactStrip below, which is the other end of
+            the sentence it was always promising. */}
         <div className="mt-auto pt-10">
           <div className="h-px w-full bg-border/70" />
           <p className="mt-5 text-[13px] leading-[1.7] text-muted-foreground">
             Teacher accounts are set up for you during the pilot.{" "}
-            <span className="text-foreground">Get in touch</span> and we'll make
-            you one.
+            <a
+              href={`#${CONTACT_FIELD_ID}`}
+              onClick={(event) => {
+                // Let the hash navigation do the scrolling, then put the caret
+                // where they plainly meant to go. Without this the page jumps
+                // to the box and leaves them to click again.
+                event.preventDefault();
+                const field = document.getElementById(CONTACT_FIELD_ID);
+                field?.scrollIntoView({ behavior: "smooth", block: "center" });
+                field?.focus({ preventScroll: true });
+              }}
+              className="text-foreground underline decoration-border underline-offset-4 transition-colors hover:text-forest hover:decoration-forest"
+            >
+              Get in touch
+            </a>{" "}
+            and we'll make you one.
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Leave-your-email, for an adult who does not have an account and cannot get
+ * one by filling in a form.
+ *
+ * WHY IT IS NOT A THIRD BORDERED CARD. StudentBox and AdultBox are two ways
+ * IN, drawn as two matching bordered panels side by side. This is not a third
+ * one — nothing here signs anybody in, and a matching card would say it did.
+ * So it sits below both, full width, on a hairline rather than a border, with
+ * the fields on one row. The visual weight is the message: this is an aside,
+ * and the two boxes above are still the point of the page.
+ *
+ * The note field is optional and short by design. An email on its own means
+ * every reply has to open by asking what the person wanted; 400 characters is
+ * room for "Head of Maths at X, asking about September" and deliberately not
+ * room for a support request, which is what /help is for.
+ */
+const CONTACT_FIELD_ID = "sprig-contact-email";
+
+function ContactStrip() {
+  const [email, setEmail] = useState("");
+  const [note, setNote] = useState("");
+  const [pending, setPending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (pending) return;
+
+    setError(null);
+    setPending(true);
+    const result = await submitContactRequest(email, note);
+    setPending(false);
+
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    // Cleared only once the row has actually landed, matching the Help box:
+    // clearing optimistically throws away what they typed if the write failed.
+    setEmail("");
+    setNote("");
+    setSent(true);
+  }
+
+  return (
+    <div className="mt-20">
+      <div className="h-px w-full bg-border/70" />
+
+      <div className="mt-8 grid grid-cols-12 gap-x-10 gap-y-6">
+        <div className="col-span-12 lg:col-span-4">
+          <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
+            <span>III</span>
+            <span className="h-px w-6 bg-border" />
+            <span>Not a login</span>
+          </div>
+          <p className="mt-4 max-w-sm text-[13.5px] leading-[1.7] text-muted-foreground">
+            A teacher, parent or school wanting to bring Sprig to students —
+            leave an address and Artem will get in touch. This doesn't create
+            an account or sign you in.
+          </p>
+        </div>
+
+        <div className="col-span-12 lg:col-span-8">
+          {sent ? (
+            /* Careful about what this claims. It says the address is written
+               down, which is true and checkable, and that a reply comes by
+               email, which is the only channel that exists. It deliberately
+               does not promise a timeframe — the Help box's first version
+               promised two days with nothing behind it, and that is recorded
+               in 20260817000000 as the mistake not to repeat. */
+            <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2">
+              <p className="text-[15px] leading-[1.7] text-foreground">
+                Thank you — that's saved.
+              </p>
+              <p className="text-[13.5px] leading-[1.7] text-muted-foreground">
+                Artem reads these and will reply by email.
+              </p>
+              <button
+                type="button"
+                onClick={() => setSent(false)}
+                className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground underline-offset-4 transition-colors hover:text-forest hover:underline"
+              >
+                Add another
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit}>
+              <div className="grid grid-cols-12 gap-x-8 gap-y-6">
+                <div className="col-span-12 sm:col-span-5">
+                  <FieldLine
+                    id={CONTACT_FIELD_ID}
+                    label="Your email"
+                    placeholder="you@school.uk"
+                    type="email"
+                    value={email}
+                    onChange={setEmail}
+                    autoComplete="email"
+                    disabled={pending}
+                  />
+                </div>
+                <div className="col-span-12 sm:col-span-7">
+                  <FieldLine
+                    label="Anything to add (optional)"
+                    placeholder="e.g. Head of Maths, asking about September"
+                    value={note}
+                    onChange={setNote}
+                    maxLength={CONTACT_MESSAGE_MAX}
+                    disabled={pending}
+                  />
+                </div>
+              </div>
+
+              {error && (
+                <p
+                  role="alert"
+                  className="mt-5 text-[13px] leading-[1.6] text-[color:var(--destructive)]"
+                >
+                  {error}
+                </p>
+              )}
+
+              <button
+                type="submit"
+                disabled={pending}
+                className="group mt-7 inline-flex items-center gap-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {/* Smaller than the two sign-in buttons above (h-9 against
+                    h-11) and outlined rather than filled — the same control,
+                    quieter, so it does not read as a third way in. */}
+                <span className="flex h-9 w-9 items-center justify-center rounded-full border border-border/80 text-foreground transition-colors group-hover:border-forest group-hover:text-forest">
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </span>
+                <span className="text-[14px] font-medium text-foreground">
+                  {pending ? "Sending…" : "Leave my email"}
+                </span>
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
@@ -350,6 +516,7 @@ function AdultBox() {
  * React complain about a controlled input with no change handler.
  */
 function FieldLine({
+  id,
   label,
   placeholder,
   type = "text",
@@ -360,6 +527,8 @@ function FieldLine({
   autoComplete,
   disabled,
 }: {
+  /** Only set where something needs to link to the field — see CONTACT_FIELD_ID. */
+  id?: string;
   label: string;
   placeholder?: string;
   type?: string;
@@ -376,6 +545,7 @@ function FieldLine({
         {label}
       </span>
       <input
+        id={id}
         type={type}
         placeholder={placeholder}
         value={value}

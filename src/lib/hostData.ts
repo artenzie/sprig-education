@@ -77,6 +77,21 @@ export type HostHelpMessage = {
   nickname: string | null;
 };
 
+/**
+ * Somebody who left an email address on /login.
+ *
+ * No nickname and no student link, unlike HostHelpMessage: whoever fills that
+ * form in has no account, which is the reason they are filling it in. The
+ * address is the identity.
+ */
+export type HostContactRequest = {
+  id: number;
+  created_at: string;
+  email: string;
+  /** Optional — the form takes an address on its own. */
+  message: string | null;
+};
+
 /** A test attempt with the student attached — the cohort view of TestAttemptRow. */
 export type HostTestAttempt = TestAttemptRow & { student_id: string };
 
@@ -90,6 +105,7 @@ export type HostData = {
   weekly: HostWeeklyCheckin[];
   attempts: HostTestAttempt[];
   helpMessages: HostHelpMessage[];
+  contactRequests: HostContactRequest[];
 };
 
 const PAGE_SIZE = 1000;
@@ -165,6 +181,7 @@ export async function fetchHostData(): Promise<Result<{ data: HostData }>> {
     attempts,
     lockouts,
     help,
+    contact,
   ] = await Promise.all([
     // Each orderBy is the table's primary key — see the note on fetchTable
     // about why a paged read without a total order is a silent data bug.
@@ -196,6 +213,7 @@ export async function fetchHostData(): Promise<Result<{ data: HostData }>> {
     ),
     supabase.rpc("teacher_student_lockouts"),
     supabase.rpc("host_help_messages"),
+    supabase.rpc("host_contact_requests"),
   ]);
 
   for (const result of [students, teachers, topics, progress, daily, weekly, attempts]) {
@@ -206,6 +224,7 @@ export async function fetchHostData(): Promise<Result<{ data: HostData }>> {
   // is slightly wrong, while a dashboard that refuses to load is useless.
   if (lockouts.error) console.error("Could not read lockout state", lockouts.error);
   if (help.error) console.error("Could not read the feedback inbox", help.error);
+  if (contact.error) console.error("Could not read contact requests", contact.error);
 
   const lockedUntilById = new Map<string, string>(
     ((lockouts.data ?? []) as { student_id: string; locked_until: string }[]).map((r) => [
@@ -241,6 +260,7 @@ export async function fetchHostData(): Promise<Result<{ data: HostData }>> {
       weekly: (weekly as { ok: true; rows: HostWeeklyCheckin[] }).rows,
       attempts: (attempts as { ok: true; rows: HostTestAttempt[] }).rows,
       helpMessages: (help.data ?? []) as HostHelpMessage[],
+      contactRequests: (contact.data ?? []) as HostContactRequest[],
     },
   };
 }

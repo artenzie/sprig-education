@@ -348,6 +348,32 @@ async function probePrincipal(
       : `NOT REFUSED — read ${helpDirect.data?.length ?? 0} row(s)`,
   };
 
+  // Same deal for contact_requests (20260820000000): RLS on, zero policies,
+  // zero grants, read by the host only through host_contact_requests(). This
+  // table holds real email addresses of real adults, so a grant appearing here
+  // by accident leaks more than a help message would.
+  const contactDirect = await client.from("contact_requests").select("id").limit(1);
+  invariants["cannot read contact_requests directly"] = {
+    pass: Boolean(contactDirect.error),
+    detail: contactDirect.error
+      ? `refused (${contactDirect.error.code})`
+      : `NOT REFUSED — read ${contactDirect.data?.length ?? 0} row(s)`,
+  };
+
+  // And the write side. submit_contact_request() is granted to anon by design,
+  // so the table must NOT also be insertable directly — that would be the
+  // unauthenticated write endpoint the RPC exists to avoid.
+  const contactInsert = await client
+    .from("contact_requests")
+    .insert({ email: "rls-probe@example.invalid" })
+    .select("id");
+  invariants["cannot insert into contact_requests directly"] = {
+    pass: Boolean(contactInsert.error),
+    detail: contactInsert.error
+      ? `refused (${contactInsert.error.code})`
+      : `NOT REFUSED — inserted ${contactInsert.data?.length ?? 0} row(s)`,
+  };
+
   // ---------------------------------------------------------------------
   // C. Acting on somebody else's student
   // ---------------------------------------------------------------------
