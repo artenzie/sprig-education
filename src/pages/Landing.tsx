@@ -225,8 +225,13 @@ function Landing() {
                 impact only grows with the number of young people it actually
                 reaches.
               </p>
+              {/* "I work directly with" -> "I'm reaching out to". Same reason
+                  the trust panel below stopped saying "Built with teachers":
+                  the original was present tense about relationships that are
+                  being sought rather than held, and it sat four paragraphs
+                  above a panel now saying schools are invited. */}
               <p>
-                I work directly with schools, teachers, and organisations who
+                I'm reaching out to schools, teachers, and organisations who
                 want to bring this to more students — quietly, thoughtfully, and
                 always free for families.
               </p>
