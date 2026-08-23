@@ -33,14 +33,29 @@ export async function submitHelpMessage(
   const { error } = await supabase.rpc("submit_help_message", { p_message: trimmed });
 
   if (error) {
-    // A raised exception arrives with the sentence we wrote; anything else is a
-    // network or permissions failure whose real text would not help anybody.
+    // WHICH ERRORS ARE SAFE TO SHOW. The sentences submit_help_message() raises
+    // are written for the person reading them ("please keep it under 2000
+    // characters"), and they arrive with PostgreSQL's raise_exception code,
+    // P0001. Everything else — a missing function, a permissions failure, a
+    // dropped connection — is an internal detail whose real text helps nobody
+    // and leaks how the back end is put together.
+    //
+    // This used to ask whether the message contained "fetch", on the theory
+    // that network failures say "Failed to fetch" and everything else must
+    // therefore be ours. That is not true of most of them: the same test in
+    // contact.ts let a raw "Could not find the function public.<name>(<args>)
+    // in the schema cache" onto the page in red. A student who cannot log in is
+    // already having a bad time without being shown a schema-cache error.
+    if (error.code === "P0001" && error.message) {
+      return { ok: false, message: error.message };
+    }
+    // Swallowed for the reader, kept for whoever has to debug it — the same
+    // move readableError() makes in teacherAuth.ts. Hiding an unexpected error
+    // from the page should not mean losing it entirely.
+    console.error("Unexpected error sending a help message", error);
     return {
       ok: false,
-      message:
-        error.message && !error.message.toLowerCase().includes("fetch")
-          ? error.message
-          : "That didn't send. Check your connection and try again — or email hello@sprig.study.",
+      message: "That didn't send. Please try again in a moment — or email hello@sprig.study.",
     };
   }
 

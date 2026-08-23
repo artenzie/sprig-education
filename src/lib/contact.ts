@@ -64,12 +64,16 @@ export async function submitContactRequest(
     // "fetch", which let a raw
     // "Could not find the function public.submit_contact_request(p_email) in
     // the schema cache" straight onto the page.
+    if (error.code === "P0001" && error.message) {
+      return { ok: false, message: error.message };
+    }
+    // Swallowed for the reader, kept for whoever has to debug it — the same
+    // move readableError() makes in teacherAuth.ts. Hiding an unexpected error
+    // from the page should not mean losing it entirely.
+    console.error("Unexpected error leaving a contact request", error);
     return {
       ok: false,
-      message:
-        error.code === "P0001" && error.message
-          ? error.message
-          : "That didn't send. Please try again in a moment — or email hello@sprig.study.",
+      message: "That didn't send. Please try again in a moment — or email hello@sprig.study.",
     };
   }
 
