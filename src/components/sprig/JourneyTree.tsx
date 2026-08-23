@@ -65,13 +65,28 @@ type Milestone = {
 // about 0.68, which is why the type sizes below look large: 16.5 user units
 // lands at roughly 11px on screen.
 
-// Left edge is -150, not the -110 the proportions would suggest: the
-// Application canopy's contour reaches x=-134 once it has been grown around
-// "Buy Now, Pay Later" and "Financial Safety", and a blob clipped by the
-// viewBox edge reads as a rectangle, not a leaf. The right edge stays at 1010.
-const VB_X = -150;
+// THE LEFT EDGE IS MEASURED, NOT GUESSED. The Application canopy is grown
+// around its widest labels ("Buy Now, Pay Later", "Scams & Financial Safety")
+// and its contour, plus the edge stroke, reaches x = -160. The viewBox began
+// at -150, so ten units of the crown were being cut off by the SVG's own
+// coordinate window — not by any CSS container, which is where you would look
+// first and find every ancestor set to `overflow: visible`.
+//
+// -182 gives that contour ten units of air, and the width keeps the same
+// margin past the Mastery crown on the right. A wider viewBox renders the tree
+// very slightly SMALLER in the same column, which is the safe direction: the
+// fix for clipping should never be to let the artwork grow into the space it
+// was overflowing.
+//
+// THESE TWO NUMBERS ARE DOWNSTREAM OF LABEL_GAP AND LINE. The canopies are
+// grown around the node label boxes, so widening the gap or the leading makes
+// every crown bigger and pushes the outermost contour further out — the first
+// attempt at this fix used -168/1184, which was correct until the spacing
+// change below made the artwork 12 units wider than it had been when measured.
+// If you touch the spacing, re-measure the union bbox and come back here.
+const VB_X = -182;
 const VB_Y = -30;
-const VB_W = 1160;
+const VB_W = 1210;
 const VB_H = 1075;
 const VIEW_BOX = `${VB_X} ${VB_Y} ${VB_W} ${VB_H}`;
 
@@ -86,9 +101,15 @@ const HUB_R = 32;
 const TITLE_SIZE = 16.5;
 const ROMAN_SIZE = 11.5;
 /** Vertical distance between two wrapped title lines. */
-const LINE = 20;
-/** Horizontal gap between a node's disc and the start of its label. */
-const LABEL_GAP = 30;
+const LINE = 23;
+/**
+ * Horizontal gap between a node's disc and the start of its label.
+ *
+ * 30 put the first glyph 15 units from the disc's edge, which at render scale
+ * is about ten pixels — close enough that a two-line label read as attached to
+ * the circle rather than beside it. 42 is a clear gap at every size.
+ */
+const LABEL_GAP = 42;
 /**
  * Rough average glyph width at TITLE_SIZE, used only to estimate how much room
  * a label needs so the canopy can be grown around it. An estimate is fine here
@@ -102,46 +123,45 @@ const CHAR_W = 8.2;
 // Every colour is derived from the Sprig tokens in index.css rather than
 // hardcoded, so the tree follows the palette if the palette moves.
 //
-// THE CONTRAST CONSTRAINT: canopy labels are cream text sitting directly on the
-// foliage, so every canopy fill -- in leaf or not -- has to stay dark enough to
-// carry them. That is why a dormant canopy is a muted BARK grey-green rather
-// than the pale mint you might expect. Pale foliage would read as "not grown
-// yet" at a glance and then leave its own labels illegible.
-
-const TRUNK_FILL = "color-mix(in oklab, var(--forest) 62%, black)";
-const LIMB_FILL = "color-mix(in oklab, var(--forest) 58%, black)";
+// THE CONTRAST CONSTRAINT, INVERTED. This block used to open by explaining
+// that canopy labels are CREAM text on the foliage, so every canopy fill had
+// to stay dark enough to carry them -- which is why a dormant canopy was a
+// muted bark grey and a grown one a deep forest. That constraint was real, and
+// it drove the whole tree toward the dark end of the palette. At 100%
+// completion the result was three near-black masses filling the upper half of
+// the screen: the exact moment a student should feel they have grown something
+// is the moment the drawing looked heaviest.
+//
+// The constraint is now satisfied from the other side. Canopy labels are INK,
+// the same near-black the rest of Sprig sets type in, so the foliage is free
+// to be light -- the mint end of the palette this product is actually built
+// from. A label on a canopy and a label on the cream page are now the same
+// colour, which is also one fewer thing to get wrong.
+//
+// WHAT SEPARATES GROWN FROM DORMANT is therefore no longer lightness but
+// CHROMA. A tier not yet reached is drab -- almost colourless, a grey-green
+// ghost of a crown. A tier in leaf is the same lightness and properly
+// saturated. "Not grown yet" reads as colourless rather than as dark, which is
+// both a better metaphor and the only version that keeps every label legible
+// in every state.
+const TRUNK_FILL = "var(--forest)";
+const LIMB_FILL = "var(--forest)";
 
 /**
- * Canopy tones — ONE SET PER TIER, which is the point.
+ * Canopy tones — one set per tier, and one PAIR per tier.
  *
- * This used to be four constants: a grown pair and a dormant pair, shared by
- * all three canopies. The consequence was that any two canopies in the SAME
- * state were the same colour, and since the three overlap by 150-200 units
- * they read as a single mass rather than three crowns. At the start of the
- * course that is the worst case: all three are dormant, so the entire upper
- * half of the drawing is one near-black shape and the only thing telling a
- * student which branch is which is the small italic header above it.
+ * The three canopies overlap by 150-200 units, so two crowns in the same state
+ * sharing a colour read as a single mass. Each tier is separated from its
+ * neighbours on hue, and grown is separated from dormant on chroma:
  *
- * So each tier now carries its own pair, separated on TWO axes at once:
+ *   Application  hue ~145  (warm, green-leaning mint)
+ *   Mathematics  hue ~168  (the --mint token's own hue, the brand centre)
+ *   Mastery      hue ~195  (cool, teal-leaning mint)
  *
- *   - LIGHTNESS. Roughly 0.10 apart in oklch terms, Application lightest and
- *     Mastery deepest. Mixing with black in oklab scales lightness linearly,
- *     so the percentage below is very nearly the lightness multiplier.
- *   - HUE. Application is pulled toward terracotta, Mastery toward ink, and
- *     Mathematics is left on the raw token. Lightness alone would read as one
- *     colour lit unevenly; the hue shift is what makes them read as three
- *     different plants.
- *
- * THE CONTRAST CONSTRAINT STILL BINDS, and it is why the spread is only 0.10
- * per step and not more. Canopy labels are cream text sitting directly on the
- * foliage, so the LIGHTEST of these six fills still has to be dark enough to
- * carry cream. That caps the top of the range at roughly 0.48 and the bottom
- * is set by not turning Mastery into a black hole. Widening the spread past
- * this means giving up either the contrast or the "these are all foliage"
- * family resemblance.
- *
- * Everything is still derived from the tokens in index.css, so the tree
- * follows the palette if the palette moves.
+ * All six fills sit between 0.85 and 0.91 lightness. Against ink at 0.26 that
+ * is an enormous contrast margin, so the labels are safe in every combination
+ * and there is no longer a cap on how light the foliage may go -- which is
+ * what makes the celebratory end of the scale reachable at all.
  */
 type CanopyTone = { fill: string; shade: string };
 
@@ -149,25 +169,29 @@ type CanopyTone = { fill: string; shade: string };
 const mix = (a: string, pct: number, b: string) =>
   `color-mix(in oklab, ${a} ${pct}%, ${b})`;
 
-const WARM_BARK = mix("var(--bark)", 82, "var(--terracotta)");
-const COOL_BARK = mix("var(--bark)", 80, "var(--ink)");
-const COOL_FOREST = mix("var(--forest)", 88, "var(--ink)");
-
+// Written as oklch rather than as mixes of existing tokens, deliberately. The
+// six differ from each other by small, deliberate steps in hue and chroma at a
+// held lightness, and expressing that as chains of color-mix() would hide the
+// one thing a reader needs to see -- that they are a family, evenly spaced.
 const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> = {
-  // Application — warmest and lightest. The first branch a student meets.
+  // Application — warm mint. The first branch a student meets.
   2: {
-    grown: { fill: mix("var(--forest)", 86, "black"), shade: mix("var(--forest)", 62, "black") },
-    dormant: { fill: mix(WARM_BARK, 92, "black"), shade: mix(WARM_BARK, 66, "black") },
+    grown: { fill: "oklch(0.895 0.058 145)", shade: "oklch(0.845 0.062 148)" },
+    dormant: { fill: "oklch(0.905 0.012 145)", shade: "oklch(0.862 0.014 148)" },
   },
-  // Mathematics — the mid tone, closest to the single colour all three shared.
+  // Mathematics — the --mint token's own hue, the middle of the family.
   3: {
-    grown: { fill: mix("var(--forest)", 70, "black"), shade: mix("var(--forest)", 50, "black") },
-    dormant: { fill: mix("var(--bark)", 78, "black"), shade: mix("var(--bark)", 56, "black") },
+    grown: { fill: "oklch(0.878 0.062 168)", shade: "oklch(0.828 0.066 170)" },
+    dormant: { fill: "oklch(0.892 0.011 168)", shade: "oklch(0.848 0.013 170)" },
   },
-  // Mastery — coolest and deepest, which suits the tier that is furthest off.
+  // Mastery — cool mint, furthest from the trunk in both senses. Hue 186 and
+  // not 195: at 195 the fill crossed out of green entirely and read as a pale
+  // sky blue sitting next to two greens, which looked like a different product
+  // rather than the third crown of the same tree. 186 is still clearly the
+  // coolest of the three without leaving the family.
   4: {
-    grown: { fill: mix(COOL_FOREST, 56, "black"), shade: mix(COOL_FOREST, 40, "black") },
-    dormant: { fill: mix(COOL_BARK, 62, "black"), shade: mix(COOL_BARK, 44, "black") },
+    grown: { fill: "oklch(0.858 0.050 186)", shade: "oklch(0.808 0.054 188)" },
+    dormant: { fill: "oklch(0.875 0.010 186)", shade: "oklch(0.832 0.012 188)" },
   },
 };
 
@@ -196,8 +220,13 @@ const toneFor = (tier: number, grown: boolean): CanopyTone =>
  * Widened from 5 to 7 at the same time — at 5 the seam was about 3px on
  * screen, which hinted at a boundary without reading as two separate crowns.
  */
-const CANOPY_EDGE = mix("var(--ink)", 88, "black");
-const CANOPY_EDGE_W = 7;
+// The edge is now FOREST, which does two jobs at once. It separates
+// neighbouring crowns against the new light fills, and it is the same colour
+// as the trunk, the limbs and the lit lesson path -- so every structural line
+// in the drawing is one colour and every filled area is another. The old dark
+// ink edge was a third colour doing neither job.
+const CANOPY_EDGE = "var(--forest)";
+const CANOPY_EDGE_W = 5;
 
 /**
  * Which canopy paints over which, bottom to top. Deliberately a constant and
@@ -209,8 +238,14 @@ const CANOPY_EDGE_W = 7;
  */
 const CANOPY_PAINT_ORDER = [4, 2, 3];
 
-const ON_CANOPY_TEXT = "var(--cream)";
-const ON_CANOPY_ROMAN = "var(--mint)";
+// Canopy labels and cream-page labels are now THE SAME two colours. A label
+// used to invert depending on what it sat on -- cream on foliage, ink on paper
+// -- which is what forced the foliage to stay dark. With light canopies both
+// surfaces take ink, so these four constants collapse to two in practice and
+// are kept apart only because the roman numeral wants a little less weight on
+// foliage than it does on paper.
+const ON_CANOPY_TEXT = "var(--ink)";
+const ON_CANOPY_ROMAN = "color-mix(in oklab, var(--forest) 80%, black)";
 const ON_CREAM_TEXT = "var(--ink)";
 const ON_CREAM_ROMAN = "var(--muted-foreground)";
 
@@ -269,7 +304,13 @@ const MASTERY_NODES: Node[] = [
   { id: "r2", x: 588, y: 484, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], tier: 4, topicOrder: 2, side: "right" },
   { id: "r3", x: 632, y: 424, chapter: "IV.III", title: "Present & Future Value",     tier: 4, topicOrder: 3, side: "right" },
   { id: "r4", x: 662, y: 332, chapter: "IV.IV",  title: "Behavioural Finance",        tier: 4, topicOrder: 4, side: "right" },
-  { id: "r5", x: 678, y: 238, chapter: "IV.V",   title: "Introduction to Crypto",     tier: 4, topicOrder: 5, side: "right" },
+  // r5 raised 238 -> 198. It is the TOP Mastery node, so its box sets how high
+  // that canopy reaches. At 238 the crown topped out at y=188 while the IV
+  // milestone disc bottoms at y=151 — leaving 37 units of bare limb standing on
+  // cream between the two, which reads as a stray line poking out of the disc.
+  // Application and Mathematics never had this because their crowns already
+  // reach their discs (tops at 148 and 128).
+  { id: "r5", x: 678, y: 198, chapter: "IV.V",   title: "Introduction to Crypto",     tier: 4, topicOrder: 5, side: "right" },
 ];
 
 const MILESTONES: Milestone[] = [
@@ -584,7 +625,10 @@ function TierCanopy({
         <path d={shade} fill={tone.shade} opacity={0.5} />
         {/* The highlight lobe only appears once the tier is in leaf — a dormant
             canopy should look flat and unlit. */}
-        {grown && <path d={light} fill="var(--mint)" opacity={0.18} />}
+        {/* Cream, not mint. On the old dark foliage a mint lobe read as light
+            falling on the crown; on light foliage it vanished. Cream is the
+            page's own colour, so the lobe now reads as a gap in the leaves. */}
+        {grown && <path d={light} fill="var(--cream)" opacity={0.32} />}
       </g>
     </g>
   );
@@ -609,14 +653,21 @@ function LessonPath({
 }) {
   const d = smoothOpen([start, ...nodes.map((n) => [n.x, n.y] as Pt)]);
   return (
+    // Forest, not mint. The lit portion of this path is the same colour as the
+    // limbs it continues from and the ring around every node sitting on it —
+    // one structural colour for the whole drawing. Mint was invisible against
+    // the new light canopies anyway.
+    //
+    // Widened 6 -> 10 so a 30-wide node disc overhangs it less; see the note
+    // on the trunk and limb widths below.
     <g fill="none" strokeLinecap="round">
-      <path d={d} stroke="var(--mint)" strokeWidth="6" opacity={0.22} />
+      <path d={d} stroke="var(--forest)" strokeWidth="10" opacity={0.2} />
       {fraction > 0 && (
         <path
           d={d}
-          stroke="var(--mint)"
-          strokeWidth="6"
-          opacity={0.9}
+          stroke="var(--forest)"
+          strokeWidth="10"
+          opacity={0.95}
           pathLength={1}
           strokeDasharray={`${fraction} 1`}
         />
@@ -834,22 +885,7 @@ function LockGlyph({ x, y, stroke }: { x: number; y: number; stroke: string }) {
  * should have been twenty. A real <button> is exposed everywhere, gets Enter
  * and Space for free, and cannot be got wrong.
  */
-function LessonNodeArt({
-  node,
-  status,
-  tone,
-}: {
-  node: Node;
-  status: TopicStatus;
-  /**
-   * The tone of the canopy this node sits on, so a locked disc is a darker
-   * patch of ITS OWN foliage. It used to be `CANOPY_GROWN_SHADE` for every
-   * canopy node, which meant a dormant brown crown carried five green discs —
-   * fine while all canopies were the same colour, obviously wrong once they
-   * were not. Undefined for trunk nodes, which sit on cream and invert.
-   */
-  tone?: CanopyTone;
-}) {
+function LessonNodeArt({ node, status }: { node: Node; status: TopicStatus }) {
   const onCanopy = node.tier > 1;
   const text = lines(node);
   const left = node.side === "left";
@@ -857,37 +893,31 @@ function LessonNodeArt({
   const anchor = left ? "end" : "start";
   const romanY = node.y - 7 - (text.length - 1) * LINE;
 
-  const canopyShade = tone?.shade ?? mix("var(--forest)", 55, "black");
-
-  // Disc treatment. On the canopy the disc is cream on dark foliage; on the
-  // bare trunk it is dark on cream paper. Same three states, inverted.
+  // Disc treatment — NOW THE SAME ON BOTH SURFACES, which is the point.
+  //
+  // It used to invert: a cream disc on dark foliage, a dark disc on cream
+  // paper. That was forced by the foliage being darker than the page, and it
+  // meant a completed node looked like two different components depending on
+  // which half of the drawing it sat in. Both surfaces are light now, so a
+  // node is a forest disc with a cream glyph everywhere, and a locked one is
+  // an open ring on whatever it is sitting on.
+  //
+  // The ring is `var(--forest)` — the same colour as the trunk, the limbs and
+  // the lit lesson path. That was the mismatch: a mint ring on a forest branch
+  // read as two unrelated systems overlapping.
   const discFill =
-    status === "locked"
-      ? onCanopy
-        ? canopyShade
-        : "var(--background)"
-      : onCanopy
-        ? "var(--cream)"
-        : TRUNK_FILL;
-  const discStroke = status === "locked" ? (onCanopy ? "var(--mint)" : "var(--border)") : "none";
-  const glyphStroke = onCanopy
-    ? status === "locked"
-      ? "var(--mint)"
-      : canopyShade
-    : status === "locked"
-      ? "var(--muted-foreground)"
-      : "var(--cream)";
+    status === "locked" ? "var(--background)" : "var(--forest)";
+  const discStroke = status === "locked" ? "var(--forest)" : "none";
+  const glyphStroke =
+    status === "locked" ? "color-mix(in oklab, var(--forest) 70%, white)" : "var(--cream)";
 
   const titleFill = onCanopy ? ON_CANOPY_TEXT : ON_CREAM_TEXT;
   const romanFill = onCanopy ? ON_CANOPY_ROMAN : ON_CREAM_ROMAN;
   // A locked topic is drawn, not hidden — the student should see what is
-  // ahead of them — but it recedes.
-  // A locked topic recedes, but the amount it may recede depends on what it
-  // sits on. On cream paper 0.68 leaves dark text perfectly readable. On a
-  // canopy the label is CREAM, so the same 0.68 blends it back toward the
-  // foliage it is sitting on and eats most of the contrast the dark fill was
-  // chosen to provide. Canopy labels therefore fade less.
-  const dim = status === "locked" ? (onCanopy ? 0.86 : 0.68) : 1;
+  // ahead of them — but it recedes. One value now rather than two: both
+  // surfaces are light and both labels are ink, so there is no longer a case
+  // where fading a label pushes it toward the colour behind it.
+  const dim = status === "locked" ? 0.72 : 1;
 
   return (
     <g>
@@ -1096,10 +1126,8 @@ export function JourneyTree({ journey }: { journey: Journey }) {
     ...MASTERY_NODES,
   ];
 
-  const renderNodeArt = (list: Node[], tone?: CanopyTone) =>
-    list.map((n) => (
-      <LessonNodeArt key={n.id} node={n} status={resolve(n).status} tone={tone} />
-    ));
+  const renderNodeArt = (list: Node[]) =>
+    list.map((n) => <LessonNodeArt key={n.id} node={n} status={resolve(n).status} />);
 
   // `dx` pushes a canopy sideways and `pad` inflates it. Application and
   // Mastery are pushed further out than they were (-14 -> -30, +18 +> +34) to
@@ -1141,14 +1169,19 @@ export function JourneyTree({ journey }: { journey: Journey }) {
           <path d={`M ${TRUNK_X} ${GROUND_Y} C 424 986, 448 988, 482 986`} />
         </g>
 
-        {/* Trunk — thick at the base, tapering and gently curving upward */}
+        {/* Trunk — thick at the base, tapering and gently curving upward.
+            w1 went 16 -> 32: a node disc is 30 units across, so on a trunk
+            tapering to 16 the upper nodes hung over both edges by seven units
+            each. 32 contains them, and the base moved 36 -> 40 so it is still
+            visibly a taper. The limbs got the same treatment (4 -> 13) for the
+            same reason, alongside the lesson path going 6 -> 10. */}
         <Limb
           segs={[
             [[410, 986], [402, 900], [419, 782], [411, 692]],
             [[411, 692], [405, 652], [409, 620], [410, 588]],
           ]}
-          w0={36}
-          w1={16}
+          w0={40}
+          w1={32}
           fill={TRUNK_FILL}
         />
 
@@ -1160,14 +1193,14 @@ export function JourneyTree({ journey }: { journey: Journey }) {
             [[408, 606], [392, 566], [330, 524], [266, 462]],
             [[266, 462], [210, 408], [158, 300], [118, 138]],
           ]}
-          w0={15}
-          w1={4}
+          w0={20}
+          w1={13}
           fill={LIMB_FILL}
         />
         <Limb
           segs={[[[411, 606], [414, 520], [410, 340], [415, 138]]]}
-          w0={15}
-          w1={4}
+          w0={20}
+          w1={13}
           fill={LIMB_FILL}
         />
         {/* Tip raised from y=162 to y=139 alongside the Mastery milestone disc,
@@ -1179,8 +1212,8 @@ export function JourneyTree({ journey }: { journey: Journey }) {
             [[413, 606], [442, 570], [522, 542], [590, 470]],
             [[590, 470], [646, 400], [674, 270], [684, 139]],
           ]}
-          w0={15}
-          w1={4}
+          w0={20}
+          w1={13}
           fill={LIMB_FILL}
         />
 
@@ -1285,9 +1318,7 @@ export function JourneyTree({ journey }: { journey: Journey }) {
         {/* Lesson discs and labels last, so no foliage paints over them */}
         {renderNodeArt(TRUNK_NODES)}
         {canopyTiers.map((c) => (
-          <g key={`nodes-${c.id}`}>
-            {renderNodeArt(c.nodes, toneFor(c.tier, grown(c.tier)))}
-          </g>
+          <g key={`nodes-${c.id}`}>{renderNodeArt(c.nodes)}</g>
         ))}
       </svg>
 
