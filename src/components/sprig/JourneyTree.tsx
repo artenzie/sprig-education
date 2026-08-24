@@ -157,27 +157,25 @@ const CHAR_W = 9.4;
 // Every colour is derived from the Sprig tokens in index.css rather than
 // hardcoded, so the tree follows the palette if the palette moves.
 //
-// THE CONTRAST CONSTRAINT, INVERTED. This block used to open by explaining
-// that canopy labels are CREAM text on the foliage, so every canopy fill had
-// to stay dark enough to carry them -- which is why a dormant canopy was a
-// muted bark grey and a grown one a deep forest. That constraint was real, and
-// it drove the whole tree toward the dark end of the palette. At 100%
-// completion the result was three near-black masses filling the upper half of
-// the screen: the exact moment a student should feel they have grown something
-// is the moment the drawing looked heaviest.
+// THE CANOPY IS THE SAME COLOUR AT EVERY PROGRESS STATE. This block used to
+// carry two tones per tier -- a saturated "grown" one and a drab "dormant" one
+// -- so a tier the student had not reached was drawn colourless and filled in
+// as they worked through it. That is gone. A brand-new student now sees exactly
+// the drawing a finished one sees.
 //
-// The constraint is now satisfied from the other side. Canopy labels are INK,
-// the same near-black the rest of Sprig sets type in, so the foliage is free
-// to be light -- the mint end of the palette this product is actually built
-// from. A label on a canopy and a label on the cream page are now the same
-// colour, which is also one fewer thing to get wrong.
+// The reasoning behind the change is worth keeping, because the old behaviour
+// was not arbitrary: colour was carrying a progress signal, and progress is
+// already carried twice over by the node icons (check versus padlock) and by
+// the lit portion of the lesson path. A third encoding of the same fact cost
+// the whole tree its colour for the entire period a student is most likely to
+// be forming an impression of it -- the beginning -- in exchange for
+// information that was on the screen anyway.
 //
-// WHAT SEPARATES GROWN FROM DORMANT is therefore no longer lightness but
-// CHROMA. A tier not yet reached is drab -- almost colourless, a grey-green
-// ghost of a crown. A tier in leaf is the same lightness and properly
-// saturated. "Not grown yet" reads as colourless rather than as dark, which is
-// both a better metaphor and the only version that keeps every label legible
-// in every state.
+// So: fill, shade, outline, crown leaves, fruit and the highlight lobe are all
+// fixed. Only the node icons and the path lighting move.
+//
+// The labels are INK, which is what allows the foliage to be this light at all
+// -- see the note on ON_CANOPY_TEXT below.
 const TRUNK_FILL = "var(--forest)";
 const LIMB_FILL = "var(--forest)";
 
@@ -227,30 +225,20 @@ const mix = (a: string, pct: number, b: string) =>
 // six differ from each other by small, deliberate steps in hue and chroma at a
 // held lightness, and expressing that as chains of color-mix() would hide the
 // one thing a reader needs to see -- that they are a family, evenly spaced.
-const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> = {
-  // Application — warm mint. The first branch a student meets.
-  2: {
-    grown: { fill: "oklch(0.888 0.042 152)", shade: "oklch(0.842 0.047 154)" },
-    dormant: { fill: "oklch(0.912 0.016 152)", shade: "oklch(0.874 0.019 154)" },
-  },
+// Written as oklch rather than as mixes of existing tokens, deliberately. The
+// three differ from each other by small, deliberate steps in hue at a held
+// lightness, and expressing that as chains of color-mix() would hide the one
+// thing a reader needs to see -- that they are a family, evenly spaced.
+const CANOPY_TONES: Record<number, CanopyTone> = {
+  // Application — warm end of the mint band.
+  2: { fill: "oklch(0.888 0.042 152)", shade: "oklch(0.842 0.047 154)" },
   // Mathematics — the --mint token's own hue, the middle of the family.
-  3: {
-    grown: { fill: "oklch(0.874 0.039 165)", shade: "oklch(0.828 0.044 167)" },
-    dormant: { fill: "oklch(0.900 0.015 165)", shade: "oklch(0.862 0.018 167)" },
-  },
-  // Mastery — cool mint, furthest from the trunk in both senses. Hue 186 and
-  // not 195: at 195 the fill crossed out of green entirely and read as a pale
-  // sky blue sitting next to two greens, which looked like a different product
-  // rather than the third crown of the same tree. 186 is still clearly the
-  // coolest of the three without leaving the family.
-  4: {
-    grown: { fill: "oklch(0.860 0.036 178)", shade: "oklch(0.814 0.041 180)" },
-    dormant: { fill: "oklch(0.888 0.014 178)", shade: "oklch(0.850 0.017 180)" },
-  },
+  3: { fill: "oklch(0.874 0.039 165)", shade: "oklch(0.828 0.044 167)" },
+  // Mastery — cool end of the mint band.
+  4: { fill: "oklch(0.860 0.036 178)", shade: "oklch(0.814 0.041 180)" },
 };
 
-const toneFor = (tier: number, grown: boolean): CanopyTone =>
-  (CANOPY_TONES[tier] ?? CANOPY_TONES[3])[grown ? "grown" : "dormant"];
+const toneFor = (tier: number): CanopyTone => CANOPY_TONES[tier] ?? CANOPY_TONES[3];
 
 /**
  * The edge drawn around each canopy, separating neighbouring crowns.
@@ -743,7 +731,6 @@ function TierCanopy({
   yMax,
   dx = 0,
   pad = 22,
-  grown,
 }: {
   nodes: Node[];
   seed: number;
@@ -753,10 +740,8 @@ function TierCanopy({
   yMax: number;
   dx?: number;
   pad?: number;
-  /** Has the student reached this tier? Drives the whole colour treatment. */
-  grown: boolean;
 }) {
-  const tone = toneFor(tier, grown);
+  const tone = toneFor(tier);
   const pts = tierPoints(nodes, CROWNS[tier]).map(([x, y]) => [x + dx, y] as Pt);
   const main = organicBlob(pts, pad, seed, { yMax, outward: true });
   const shade = organicBlob(pts, pad, seed + 4.1, { scale: 0.9, shift: [22, 36], yMax });
@@ -774,8 +759,10 @@ function TierCanopy({
             canopy should look flat and unlit. */}
         {/* Cream, not mint. On the old dark foliage a mint lobe read as light
             falling on the crown; on light foliage it vanished. Cream is the
-            page's own colour, so the lobe now reads as a gap in the leaves. */}
-        {grown && <path d={light} fill="var(--cream)" opacity={0.32} />}
+            page's own colour, so the lobe reads as a gap in the leaves.
+            Unconditional now — it used to appear only once a tier was reached,
+            which made the crown visibly change shape as a student progressed. */}
+        <path d={light} fill="var(--cream)" opacity={0.32} />
       </g>
     </g>
   );
@@ -1206,17 +1193,7 @@ function LessonNodeButton({
  * same open/closed language the lesson discs use, so a student reads the state
  * without being taught a second convention.
  */
-function CrownLeaf({
-  x,
-  y,
-  numeral,
-  complete,
-}: {
-  x: number;
-  y: number;
-  numeral: string;
-  complete: boolean;
-}) {
+function CrownLeaf({ x, y, numeral }: { x: number; y: number; numeral: string }) {
   const hw = CROWN_W / 2;
   const top = y - CROWN_H / 2;
   const bottom = y + CROWN_H / 2;
@@ -1230,27 +1207,25 @@ function CrownLeaf({
     <g>
       <path
         d={d}
-        fill={complete ? "var(--forest)" : "var(--background)"}
+        fill="var(--forest)"
         stroke="var(--forest)"
         strokeWidth={2.4}
         strokeLinejoin="round"
       />
       {/* The midrib, the one detail that makes it read as a leaf rather than a
-          teardrop. Only when filled, where there is contrast to carry it. */}
-      {complete && (
-        <path
-          d={`M ${x} ${top + 8} L ${x} ${bottom - 7}`}
-          stroke="var(--cream)"
-          strokeWidth={1}
-          opacity={0.5}
-          strokeLinecap="round"
-        />
-      )}
+          teardrop. */}
+      <path
+        d={`M ${x} ${top + 8} L ${x} ${bottom - 7}`}
+        stroke="var(--cream)"
+        strokeWidth={1}
+        opacity={0.5}
+        strokeLinecap="round"
+      />
       <text
         x={x}
         y={y + 6}
         textAnchor="middle"
-        fill={complete ? "var(--cream)" : "var(--forest)"}
+        fill="var(--cream)"
         fontFamily="var(--font-display, 'Fraunces', serif)"
         fontStyle="italic"
         fontSize={17}
@@ -1321,20 +1296,6 @@ export function JourneyTree({ journey }: { journey: Journey }) {
   const topicsInTier = (tier: number) => journey.topics.filter((t) => t.tier === tier);
   const completedInTier = (tier: number) =>
     topicsInTier(tier).filter((t) => t.status === "complete").length;
-
-  /**
-   * A tier is "in leaf" once the student has reached it at all -- one topic
-   * complete, or one topic currently open. Reached, not finished: the branch
-   * you are working on should look alive.
-   */
-  const grown = (tier: number) =>
-    topicsInTier(tier).some((t) => t.status === "complete" || t.status === "current");
-
-  /** A milestone completes only when every topic in its tier does. */
-  const tierComplete = (tier: number) => {
-    const topics = topicsInTier(tier);
-    return topics.length > 0 && topics.every((t) => t.status === "complete");
-  };
 
   /**
    * A node with no matching topic row isn't just unstarted, it's undrawable --
@@ -1495,7 +1456,6 @@ export function JourneyTree({ journey }: { journey: Journey }) {
               yMax={c.yMax}
               dx={c.dx}
               pad={c.pad}
-              grown={grown(c.tier)}
             />
           ))}
 
@@ -1521,17 +1481,17 @@ export function JourneyTree({ journey }: { journey: Journey }) {
             thing on the tree that is purely earned: an untouched canopy carries
             none, and a finished one is heavy with them. */}
         {canopyTiers.map((c) =>
-          FRUIT[c.tier].slice(0, completedInTier(c.tier)).map((f, i) => (
+          FRUIT[c.tier].map((f, i) => (
             <Fruit
               key={`${c.id}-${i}`}
               {...f}
-              stem={toneFor(c.tier, grown(c.tier)).shade}
+              stem={toneFor(c.tier).shade}
             />
           )),
         )}
 
         {/* Leaves on the bare trunk, likewise revealed as Tier I is worked through */}
-        {TRUNK_LEAVES.slice(0, completedInTier(1)).map((l, i) => (
+        {TRUNK_LEAVES.map((l, i) => (
           <Leaf key={`trunk-leaf-${i}`} {...l} fill="var(--mint)" />
         ))}
 
@@ -1570,14 +1530,13 @@ export function JourneyTree({ journey }: { journey: Journey }) {
             x={CROWNS[c.tier].x}
             y={CROWNS[c.tier].y}
             numeral={CROWNS[c.tier].numeral}
-            complete={tierComplete(c.tier)}
           />
         ))}
-        <MilestoneDisc
-          milestone={MILESTONES[0]}
-          complete={tierComplete(1)}
-          radius={HUB_R}
-        />
+        {/* `complete` is hardcoded true: the ring inside this disc used to
+            appear once Tier I was finished, which is the same progress-in-
+            decoration the canopy tones were carrying. The trunk nodes below
+            still show check versus padlock, which is where that fact belongs. */}
+        <MilestoneDisc milestone={MILESTONES[0]} complete radius={HUB_R} />
 
         {/* Lesson discs and labels last, so no foliage paints over them */}
         {renderNodeArt(TRUNK_NODES)}
