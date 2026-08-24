@@ -78,7 +78,7 @@ function Dashboard() {
       <main className="mx-auto grid max-w-[1280px] grid-cols-12 gap-16 px-10 pb-24 pt-10">
 
         {/* Left editorial rail */}
-        <aside className="col-span-12 lg:col-span-4">
+        <aside className="col-span-12 lg:col-span-3">
           <div className="sticky top-24">
             <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
               <span>The Sprig Journey</span>
@@ -108,7 +108,10 @@ function Dashboard() {
                 pedagogical decision, not a coding one. XP still has no rule
                 defining what a subtopic is worth. They come back when there is
                 something real behind them. */}
-            <dl className="mt-8 grid grid-cols-2 gap-y-7">
+            {/* gap-x-6 as well as gap-y. The sidebar narrowed from col-4 to col-3 when
+                the tree was given more room, and with no column gap "Application"
+                and "IV of V" ran straight into each other. */}
+            <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-7">
               <MetaStat label="Tier" value={currentTopic ? TIER_NAME[currentTopic.tier] ?? "Sprig" : "—"} />
               <MetaStat
                 label="Chapter"
@@ -154,7 +157,7 @@ function Dashboard() {
           </div>
         </aside>
 
-        <section className="col-span-12 lg:col-span-8">
+        <section className="col-span-12 lg:col-span-9">
           {dueThisWeek && !weeklyLoading && (
             <div className="mb-8 flex items-center justify-between gap-6 rounded-2xl border border-border bg-card/40 px-6 py-5">
               <div>
@@ -219,7 +222,12 @@ function MetaStat({
           accent ? "text-terracotta italic" : "text-foreground"
         }`}
       >
-        {value}
+        {/* Short values are held on one line — "32 / 80" breaking after the
+            slash in the narrowed sidebar read as two numbers. The accent stat
+            is the Next SUBTOPIC TITLE, which is free text and must stay free to
+            wrap; holding it together would push a long title out of the
+            sidebar instead of over two lines. */}
+        <span className={accent ? undefined : "whitespace-nowrap"}>{value}</span>
         {suffix && (
           <span className="ml-1 font-sans text-[11px] font-normal uppercase tracking-[0.18em] text-muted-foreground">
             {suffix}

@@ -72,8 +72,15 @@ type Milestone = {
 // coordinate window — not by any CSS container, which is where you would look
 // first and find every ancestor set to `overflow: visible`.
 //
-// -182 gives that contour ten units of air, and the width keeps the same
-// margin past the Mastery crown on the right. A wider viewBox renders the tree
+// Re-fitted after the design pass: the crown leaves, the wider label gaps and
+// the extra canopy padding all grew the artwork, which now spans x -179..1022
+// and y -2..1012. These four numbers wrap that with about ten units of air on
+// every side.
+//
+// The vertical margins were 28 above and 33 below and are now ~10 each. That
+// is not cosmetic: the wrapper takes its aspect ratio from VB_W/VB_H, so empty
+// bands top and bottom were making the whole drawing render into a taller box
+// than it needed and reserving dead space on the dashboard. A wider viewBox renders the tree
 // very slightly SMALLER in the same column, which is the safe direction: the
 // fix for clipping should never be to let the artwork grow into the space it
 // was overflowing.
@@ -84,24 +91,40 @@ type Milestone = {
 // attempt at this fix used -168/1184, which was correct until the spacing
 // change below made the artwork 12 units wider than it had been when measured.
 // If you touch the spacing, re-measure the union bbox and come back here.
-const VB_X = -182;
-const VB_Y = -30;
-const VB_W = 1210;
-const VB_H = 1075;
+const VB_X = -190;
+const VB_Y = -12;
+const VB_W = 1226;
+const VB_H = 1036;
 const VIEW_BOX = `${VB_X} ${VB_Y} ${VB_W} ${VB_H}`;
 
 const TRUNK_X = 410;
 const GROUND_Y = 978;
-const FORK: Pt = [410, 568];
+/**
+ * Where each tier's lesson chain leaves the trunk.
+ *
+ * ONE PER TIER, MATCHING THAT TIER'S LIMB ORIGIN, and that is the rest of the
+ * junction fix. There used to be a single shared FORK at [410, 568] that all
+ * three chains radiated from. Once the limbs were staggered down the trunk to
+ * stop them knotting, the chains stayed behind — so three paths fanned out of
+ * one point while three branches fanned out of three others, and the crossings
+ * between the two sets put the tangle straight back, slightly lower down.
+ *
+ * A chain and its limb now leave from the same coordinate, so the drawn line
+ * continues the branch instead of crossing it.
+ */
+const CHAIN_START: Record<number, Pt> = {
+  2: [404, 616],
+  3: [412, 590],
+  4: [416, 640],
+};
 
 const DISC_R = 15;
-const MILESTONE_R = 30;
 const HUB_R = 32;
 
 const TITLE_SIZE = 16.5;
 const ROMAN_SIZE = 11.5;
 /** Vertical distance between two wrapped title lines. */
-const LINE = 23;
+const LINE = 26;
 /**
  * Horizontal gap between a node's disc and the start of its label.
  *
@@ -109,7 +132,7 @@ const LINE = 23;
  * is about ten pixels — close enough that a two-line label read as attached to
  * the circle rather than beside it. 42 is a clear gap at every size.
  */
-const LABEL_GAP = 42;
+const LABEL_GAP = 52;
 /**
  * Rough average glyph width at TITLE_SIZE, used only to estimate how much room
  * a label needs so the canopy can be grown around it. An estimate is fine here
@@ -154,9 +177,17 @@ const LIMB_FILL = "var(--forest)";
  * sharing a colour read as a single mass. Each tier is separated from its
  * neighbours on hue, and grown is separated from dormant on chroma:
  *
- *   Application  hue ~145  (warm, green-leaning mint)
- *   Mathematics  hue ~168  (the --mint token's own hue, the brand centre)
- *   Mastery      hue ~195  (cool, teal-leaning mint)
+ *   Application  hue 152  (warm end of the mint band)
+ *   Mathematics  hue 165  (the --mint token's own hue, the brand centre)
+ *   Mastery      hue 178  (cool end of the mint band)
+ *
+ * THE BAND IS DELIBERATELY NARROW -- 26 degrees of hue and about 0.006 of
+ * chroma between neighbours. An earlier pass spread them over 40 degrees at
+ * chroma 0.05-0.06, which separated them beautifully and read as three strong
+ * colours: primary-ish, childish, and nothing like the muted palette the rest
+ * of the site is built from. Three tints of one colour still tell the crowns
+ * apart -- the eye is very good at small hue differences side by side -- while
+ * reading as one calm family rather than a set.
  *
  * All six fills sit between 0.85 and 0.91 lightness. Against ink at 0.26 that
  * is an enormous contrast margin, so the labels are safe in every combination
@@ -183,13 +214,13 @@ const mix = (a: string, pct: number, b: string) =>
 const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> = {
   // Application — warm mint. The first branch a student meets.
   2: {
-    grown: { fill: "oklch(0.895 0.058 145)", shade: "oklch(0.845 0.062 148)" },
-    dormant: { fill: "oklch(0.905 0.021 145)", shade: "oklch(0.862 0.024 148)" },
+    grown: { fill: "oklch(0.900 0.030 152)", shade: "oklch(0.856 0.034 154)" },
+    dormant: { fill: "oklch(0.906 0.011 152)", shade: "oklch(0.866 0.013 154)" },
   },
   // Mathematics — the --mint token's own hue, the middle of the family.
   3: {
-    grown: { fill: "oklch(0.878 0.062 168)", shade: "oklch(0.828 0.066 170)" },
-    dormant: { fill: "oklch(0.888 0.019 168)", shade: "oklch(0.845 0.022 170)" },
+    grown: { fill: "oklch(0.886 0.027 165)", shade: "oklch(0.842 0.031 167)" },
+    dormant: { fill: "oklch(0.893 0.010 165)", shade: "oklch(0.853 0.012 167)" },
   },
   // Mastery — cool mint, furthest from the trunk in both senses. Hue 186 and
   // not 195: at 195 the fill crossed out of green entirely and read as a pale
@@ -197,8 +228,8 @@ const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> =
   // rather than the third crown of the same tree. 186 is still clearly the
   // coolest of the three without leaving the family.
   4: {
-    grown: { fill: "oklch(0.858 0.050 186)", shade: "oklch(0.808 0.054 188)" },
-    dormant: { fill: "oklch(0.871 0.017 186)", shade: "oklch(0.828 0.020 188)" },
+    grown: { fill: "oklch(0.872 0.024 178)", shade: "oklch(0.828 0.028 180)" },
+    dormant: { fill: "oklch(0.880 0.009 178)", shade: "oklch(0.840 0.011 180)" },
   },
 };
 
@@ -232,8 +263,8 @@ const toneFor = (tier: number, grown: boolean): CanopyTone =>
 // as the trunk, the limbs and the lit lesson path -- so every structural line
 // in the drawing is one colour and every filled area is another. The old dark
 // ink edge was a third colour doing neither job.
-const CANOPY_EDGE = "var(--forest)";
-const CANOPY_EDGE_W = 5;
+const CANOPY_EDGE = mix("var(--forest)", 58, "var(--cream)");
+const CANOPY_EDGE_W = 2.5;
 
 /**
  * Which canopy paints over which, bottom to top. Deliberately a constant and
@@ -278,7 +309,7 @@ const TRUNK_NODES: Node[] = [
 // Mathematics canopy's clipped bottom edge and pulling l2 clear of its left
 // edge fixes both without disturbing the branch's shape.
 const APPLICATION_NODES: Node[] = [
-  { id: "l1", x: 292, y: 568, chapter: "II.I",   title: "Budgeting Basics",       tier: 2, topicOrder: 1, side: "left" },
+  { id: "l1", x: 274, y: 580, chapter: "II.I",   title: "Budgeting Basics",       tier: 2, topicOrder: 1, side: "left" },
   { id: "l2", x: 206, y: 492, chapter: "II.II",  title: "How Pricing Tricks You", tier: 2, topicOrder: 2, side: "left" },
   { id: "l3", x: 180, y: 408, chapter: "II.III", title: "Subscriptions & Recurring Costs", titleLines: ["Subscriptions &", "Recurring Costs"], tier: 2, topicOrder: 3, side: "left" },
   { id: "l4", x: 148, y: 316, chapter: "II.IV",  title: "Buy Now, Pay Later",     tier: 2, topicOrder: 4, side: "left" },
@@ -307,31 +338,56 @@ const MATHEMATICS_NODES: Node[] = [
 // through "The Real Compound Interest Formula". The node is wedged between two
 // constraints and this is the gap between them.
 const MASTERY_NODES: Node[] = [
-  { id: "r1", x: 508, y: 545, chapter: "IV.I",   title: "Budget Calculator (Python)", titleLines: ["Budget Calculator", "(Python)"], tier: 4, topicOrder: 1, side: "right" },
-  { id: "r2", x: 588, y: 484, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], tier: 4, topicOrder: 2, side: "right" },
-  { id: "r3", x: 632, y: 424, chapter: "IV.III", title: "Present & Future Value",     tier: 4, topicOrder: 3, side: "right" },
-  { id: "r4", x: 662, y: 332, chapter: "IV.IV",  title: "Behavioural Finance",        tier: 4, topicOrder: 4, side: "right" },
+  { id: "r1", x: 548, y: 522, chapter: "IV.I",   title: "Budget Calculator (Python)", titleLines: ["Budget Calculator", "(Python)"], tier: 4, topicOrder: 1, side: "right" },
+  { id: "r2", x: 578, y: 434, chapter: "IV.II",  title: "The Real Compound Interest Formula", titleLines: ["The Real Compound", "Interest Formula"], tier: 4, topicOrder: 2, side: "right" },
+  { id: "r3", x: 634, y: 348, chapter: "IV.III", title: "Present & Future Value",     tier: 4, topicOrder: 3, side: "right" },
+  { id: "r4", x: 668, y: 288, chapter: "IV.IV",  title: "Behavioural Finance",        tier: 4, topicOrder: 4, side: "right" },
   // r5 raised 238 -> 198. It is the TOP Mastery node, so its box sets how high
   // that canopy reaches. At 238 the crown topped out at y=188 while the IV
   // milestone disc bottoms at y=151 — leaving 37 units of bare limb standing on
   // cream between the two, which reads as a stray line poking out of the disc.
   // Application and Mathematics never had this because their crowns already
   // reach their discs (tops at 148 and 128).
-  { id: "r5", x: 678, y: 198, chapter: "IV.V",   title: "Introduction to Crypto",     tier: 4, topicOrder: 5, side: "right" },
+  { id: "r5", x: 684, y: 228, chapter: "IV.V",   title: "Introduction to Crypto",     tier: 4, topicOrder: 5, side: "right" },
 ];
 
+/**
+ * Where each canopy's chain ENDS — the leaf that carries the tier numeral.
+ *
+ * This replaces the free-floating milestone disc for tiers II-IV. The disc used
+ * to sit at a hardcoded point above the crown with the limb running up behind
+ * it, and it knew nothing about the lesson chain: five nodes threaded together
+ * inside the foliage, then a separate circle hanging above, unconnected.
+ *
+ * A crown is a real terminus instead. It is appended to the tier's node list
+ * when the path is drawn, so the line runs continuously through all five
+ * lessons and up into the leaf, and it is fed into `tierPoints` so the canopy
+ * grows to contain it.
+ *
+ * THAT SECOND PART IS NOT OPTIONAL. The canopies are generated from the boxes
+ * they must cover; a crown left out of that calculation sits above foliage that
+ * never grew to meet it, which is exactly the 37-unit gap of bare limb that
+ * showed up as a "stray line" out of the Mastery milestone on 23 August. The
+ * leaf is a bigger object than that disc was, so the same mistake here would be
+ * a bigger hole.
+ */
+const CROWNS: Record<number, { x: number; y: number; numeral: string }> = {
+  2: { x: 116, y: 150, numeral: "II" },
+  3: { x: 415, y: 128, numeral: "III" },
+  4: { x: 690, y: 150, numeral: "IV" },
+};
+
+const CROWN_W = 46;
+const CROWN_H = 62;
+
+/**
+ * Only the trunk hub now. Tiers II-IV moved to CROWNS above when their
+ * free-floating discs became chain termini; the note that used to live here
+ * about the Mastery disc hanging 23 units low went with them, since there is
+ * no longer a disc there to hang.
+ */
 const MILESTONES: Milestone[] = [
-  { id: "tm", x: TRUNK_X, y: 580, numeral: "I",   label: "Essentials",  tier: 1 },
-  { id: "lm", x: 114,     y: 121, numeral: "II",  label: "Application", tier: 2 },
-  { id: "mm", x: 415,     y: 121, numeral: "III", label: "Mathematics", tier: 3 },
-  // y was 144 — 23 units below the other two, which is the whole of the
-  // "the three section headings sit at different heights" complaint. The
-  // headings themselves were never misaligned (all three share baseline y=62,
-  // and getBBox agrees to the pixel); it was the numeral disc under Mastery
-  // that hung low, and the eye reads the heading and its disc as one unit.
-  // The Mastery limb's tip was raised to match, so the branch still runs into
-  // the disc rather than stopping short of it.
-  { id: "rm", x: 684,     y: 121, numeral: "IV",  label: "Mastery",     tier: 4 },
+  { id: "tm", x: TRUNK_X, y: 580, numeral: "I", label: "Essentials", tier: 1 },
 ];
 
 /**
@@ -352,7 +408,8 @@ const MILESTONES: Milestone[] = [
  *     hangs off an edge,
  *   - at least 26 units clear of every node disc and milestone,
  *   - at least 14 units clear of every label's bounding box,
- *   - off the lesson path.
+ *   - off the lesson path,
+ *   - clear of the crown leaf at the top of the chain.
  *
  * That left 1000-1900 legal points per canopy, from which five were chosen by
  * FARTHEST-POINT SAMPLING: start near the middle, then repeatedly take the
@@ -369,27 +426,28 @@ const MILESTONES: Milestone[] = [
  */
 const FRUIT: Record<number, { x: number; y: number; r: number; tone: "red" | "orange" }[]> = {
   2: [
-    { x: -27, y: 457, r: 7.6, tone: "red" },
-    { x: 171, y: 199, r: 5.4, tone: "orange" },
-    { x: -111, y: 187, r: 6.2, tone: "red" },
-    { x: 201, y: 541, r: 4.8, tone: "orange" },
-    { x: 153, y: 373, r: 6.8, tone: "red" },
+    { x: -32, y: 504, r: 7.6, tone: "red" },
+    { x: 190, y: 144, r: 5.4, tone: "orange" },
+    { x: -140, y: 192, r: 6.2, tone: "red" },
+    { x: 160, y: 372, r: 6.8, tone: "orange" },
+    { x: 184, y: 552, r: 4.8, tone: "red" },
   ],
   3: [
-    { x: 373, y: 275, r: 7.2, tone: "orange" },
-    { x: 469, y: 503, r: 5.0, tone: "red" },
-    { x: 595, y: 239, r: 6.4, tone: "orange" },
-    { x: 205, y: 197, r: 5.6, tone: "red" },
-    { x: 343, y: 425, r: 7.8, tone: "orange" },
+    { x: 450, y: 403, r: 7.2, tone: "orange" },
+    { x: 240, y: 133, r: 5.6, tone: "red" },
+    { x: 516, y: 133, r: 6.4, tone: "orange" },
+    { x: 300, y: 301, r: 5.0, tone: "red" },
+    { x: 378, y: 175, r: 7.8, tone: "orange" },
   ],
   4: [
-    { x: 832, y: 169, r: 6.0, tone: "red" },
-    { x: 592, y: 571, r: 5.2, tone: "orange" },
-    { x: 880, y: 469, r: 7.4, tone: "red" },
-    { x: 646, y: 283, r: 5.8, tone: "orange" },
-    { x: 976, y: 295, r: 6.6, tone: "red" },
+    { x: 838, y: 168, r: 6.0, tone: "red" },
+    { x: 586, y: 504, r: 5.2, tone: "orange" },
+    { x: 880, y: 462, r: 7.4, tone: "red" },
+    { x: 616, y: 198, r: 5.8, tone: "orange" },
+    { x: 976, y: 294, r: 6.6, tone: "red" },
   ],
 };
+
 
 /** Leaves on the bare trunk, revealed as Tier I topics are completed. */
 const TRUNK_LEAVES = [
@@ -534,11 +592,23 @@ function nodeBox(n: Node): Rect {
   return { x: x0, y: yTop, w: x1 - x0, h: yBot - yTop };
 }
 
-function tierPoints(nodes: Node[]): Pt[] {
+function tierPoints(nodes: Node[], crown?: { x: number; y: number }): Pt[] {
   const pts: Pt[] = [];
   for (const n of nodes) {
     const b = nodeBox(n);
     pts.push([b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]);
+  }
+  // The crown leaf, padded a little past its own outline so the foliage closes
+  // around it rather than ending flush with its tip.
+  if (crown) {
+    const hw = CROWN_W / 2 + 10;
+    const hh = CROWN_H / 2 + 10;
+    pts.push(
+      [crown.x - hw, crown.y - hh],
+      [crown.x + hw, crown.y - hh],
+      [crown.x - hw, crown.y + hh],
+      [crown.x + hw, crown.y + hh],
+    );
   }
   return pts;
 }
@@ -649,7 +719,7 @@ function TierCanopy({
   grown: boolean;
 }) {
   const tone = toneFor(tier, grown);
-  const pts = tierPoints(nodes).map(([x, y]) => [x + dx, y] as Pt);
+  const pts = tierPoints(nodes, CROWNS[tier]).map(([x, y]) => [x + dx, y] as Pt);
   const main = organicBlob(pts, pad, seed, { yMax, outward: true });
   const shade = organicBlob(pts, pad, seed + 4.1, { scale: 0.9, shift: [22, 36], yMax });
   const light = organicBlob(pts, pad, seed + 9.3, { scale: 0.4, shift: [-50, -68], yMax });
@@ -684,13 +754,25 @@ function TierCanopy({
 function LessonPath({
   nodes,
   start,
+  end,
   fraction,
 }: {
   nodes: Node[];
   start: Pt;
+  /** The crown leaf the chain terminates in. */
+  end: Pt;
+  /**
+   * How far along the chain the student has walked, 0..1.
+   *
+   * REBASED ON SEGMENTS, NOT NODES, and the caller does that rather than this
+   * component. The path used to run start -> n1..n5 and a fraction of
+   * completed/5 filled it exactly. Appending the crown adds a sixth segment, so
+   * completed/5 would light the whole line while the last stretch into the leaf
+   * stayed dim — the leaf would sit on an unlit stub at 100%.
+   */
   fraction: number;
 }) {
-  const d = smoothOpen([start, ...nodes.map((n) => [n.x, n.y] as Pt)]);
+  const d = smoothOpen([start, ...nodes.map((n) => [n.x, n.y] as Pt), end]);
   return (
     // Forest, not mint. The lit portion of this path is the same colour as the
     // limbs it continues from and the ring around every node sitting on it —
@@ -930,7 +1012,9 @@ function LessonNodeArt({ node, status }: { node: Node; status: TopicStatus }) {
   const left = node.side === "left";
   const tx = left ? node.x - LABEL_GAP : node.x + LABEL_GAP;
   const anchor = left ? "end" : "start";
-  const romanY = node.y - 7 - (text.length - 1) * LINE;
+  // -15 rather than -7: the numeral sat close enough to its own title to
+  // read as part of it rather than as a label above it.
+  const romanY = node.y - 15 - (text.length - 1) * LINE;
 
   // Disc treatment — NOW THE SAME ON BOTH SURFACES, which is the point.
   //
@@ -1070,6 +1154,75 @@ function LessonNodeButton({
   );
 }
 
+/**
+ * The leaf a canopy's lesson chain terminates in, carrying the tier numeral.
+ *
+ * Drawn as a teardrop: two symmetric quadratic curves from a tip at the top
+ * down to a rounded base, which is the silhouette the fallen leaves and the
+ * trunk leaves elsewhere in this file already use, scaled up and stood
+ * upright. A circle would have been easier and would have said "this is
+ * another node"; the whole point of the change is that the end of a branch is
+ * a different kind of thing from the lessons along it.
+ *
+ * `complete` fills it solid. Incomplete, it is an outline on the foliage — the
+ * same open/closed language the lesson discs use, so a student reads the state
+ * without being taught a second convention.
+ */
+function CrownLeaf({
+  x,
+  y,
+  numeral,
+  complete,
+}: {
+  x: number;
+  y: number;
+  numeral: string;
+  complete: boolean;
+}) {
+  const hw = CROWN_W / 2;
+  const top = y - CROWN_H / 2;
+  const bottom = y + CROWN_H / 2;
+  // Tip at the top, belly at two-thirds down, rounded base.
+  const d =
+    `M ${x} ${top} ` +
+    `C ${x + hw} ${top + CROWN_H * 0.34}, ${x + hw} ${bottom - CROWN_H * 0.16}, ${x} ${bottom} ` +
+    `C ${x - hw} ${bottom - CROWN_H * 0.16}, ${x - hw} ${top + CROWN_H * 0.34}, ${x} ${top} Z`;
+
+  return (
+    <g>
+      <path
+        d={d}
+        fill={complete ? "var(--forest)" : "var(--background)"}
+        stroke="var(--forest)"
+        strokeWidth={2.4}
+        strokeLinejoin="round"
+      />
+      {/* The midrib, the one detail that makes it read as a leaf rather than a
+          teardrop. Only when filled, where there is contrast to carry it. */}
+      {complete && (
+        <path
+          d={`M ${x} ${top + 8} L ${x} ${bottom - 7}`}
+          stroke="var(--cream)"
+          strokeWidth={1}
+          opacity={0.5}
+          strokeLinecap="round"
+        />
+      )}
+      <text
+        x={x}
+        y={y + 8}
+        textAnchor="middle"
+        fill={complete ? "var(--cream)" : "var(--forest)"}
+        fontFamily="var(--font-display, 'Fraunces', serif)"
+        fontStyle="italic"
+        fontSize={21}
+      >
+        {numeral}
+      </text>
+    </g>
+  );
+}
+
 /** The numeral disc standing for a whole tier. */
 function MilestoneDisc({
   milestone,
@@ -1181,9 +1334,9 @@ export function JourneyTree({ journey }: { journey: Journey }) {
   // its area landing on near-black foliage. 578 clears it and still contains
   // Mastery's own lowest node box (node r1 bottoms out at y=577).
   const canopyTiers = [
-    { tier: 2, nodes: APPLICATION_NODES, seed: 1.3, id: "app",  yMax: 598, dx: -30, pad: 22 },
-    { tier: 3, nodes: MATHEMATICS_NODES, seed: 2.7, id: "math", yMax: 536, dx: 0,   pad: 20 },
-    { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 566, dx: 34,  pad: 24 },
+    { tier: 2, nodes: APPLICATION_NODES, seed: 1.3, id: "app",  yMax: 600, dx: -30, pad: 30 },
+    { tier: 3, nodes: MATHEMATICS_NODES, seed: 2.7, id: "math", yMax: 530, dx: 0,   pad: 24 },
+    { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 545, dx: 34,  pad: 32 },
   ];
 
   return (
@@ -1224,32 +1377,40 @@ export function JourneyTree({ journey }: { journey: Journey }) {
           fill={TRUNK_FILL}
         />
 
-        {/* Three branches growing out of the fork into each canopy. Each one is
+        {/* Three branches growing out of the trunk into each canopy. Each one is
             a different length and takes a different route — the asymmetry is
-            the point, a mirrored tree reads as a logo rather than a plant. */}
+            the point, a mirrored tree reads as a logo rather than a plant.
+            
+            THE ORIGINS ARE STAGGERED, which is the fix for the tangle. All
+            three used to leave the trunk within five units of each other
+            (408, 411, 413, all at y=606) and immediately fan out, so at the
+            junction they overlapped into a single knot of crossing edges with
+            no trunk visible between them. Real branches leave a trunk at
+            different heights. Spacing the departures ~26 units apart down the
+            trunk gives each one its own visible root and leaves trunk showing
+            in the gaps. */}
         <Limb
           segs={[
-            [[408, 606], [392, 566], [330, 524], [266, 462]],
-            [[266, 462], [210, 408], [158, 300], [118, 138]],
+            [[404, 616], [380, 578], [326, 530], [266, 466]],
+            [[266, 466], [210, 410], [158, 300], [118, 150]],
           ]}
           w0={20}
           w1={13}
           fill={LIMB_FILL}
         />
         <Limb
-          segs={[[[411, 606], [414, 520], [410, 340], [415, 138]]]}
+          segs={[[[412, 590], [416, 500], [410, 330], [415, 140]]]}
           w0={20}
           w1={13}
           fill={LIMB_FILL}
         />
-        {/* Tip raised from y=162 to y=139 alongside the Mastery milestone disc,
-            which moved from 144 to 121. The disc has r=30, so at the old pairing
-            the tip sat inside it; leaving the tip behind would have left 20-odd
-            units of branch poking out below a disc that had moved on. */}
+        {/* Leaves the trunk lowest of the three, and now stops at the canopy
+            rather than running up to a disc above it — the chain inside the
+            foliage carries on from here to the crown leaf. */}
         <Limb
           segs={[
-            [[413, 606], [442, 570], [522, 542], [590, 470]],
-            [[590, 470], [646, 400], [674, 270], [684, 139]],
+            [[416, 640], [452, 598], [528, 552], [594, 476]],
+            [[594, 476], [648, 404], [678, 280], [690, 152]],
           ]}
           w0={20}
           w1={13}
@@ -1299,8 +1460,16 @@ export function JourneyTree({ journey }: { journey: Journey }) {
           <LessonPath
             key={c.id}
             nodes={c.nodes}
-            start={FORK}
-            fraction={completedInTier(c.tier) / c.nodes.length}
+            start={CHAIN_START[c.tier]}
+            end={[CROWNS[c.tier].x, CROWNS[c.tier].y]}
+            /* Segments, not nodes: the chain is start -> 5 lessons -> crown,
+               so six segments carry five completions. At 5/5 this reaches 1
+               and the line runs all the way into the leaf. */
+            fraction={
+              completedInTier(c.tier) === c.nodes.length
+                ? 1
+                : completedInTier(c.tier) / (c.nodes.length + 1)
+            }
           />
         ))}
 
@@ -1342,11 +1511,23 @@ export function JourneyTree({ journey }: { journey: Journey }) {
         <TierHeader x={114} y={62} label="Application" anchor="middle" />
         <TierHeader x={415} y={62} label="Mathematics" anchor="middle" />
         <TierHeader x={684} y={62} label="Mastery" anchor="middle" />
-        <TierHeader x={334} y={643} label="Essentials" anchor="end" />
+        {/* Moved from x=334 out to x=196. At 334 it sat directly against the
+            left-hand trunk labels and read as one more of them; the three
+            canopy headers all stand clear of their content, and this now does
+            the same for the trunk. */}
+        <TierHeader x={196} y={655} label="Essentials" anchor="end" />
 
-        {/* Milestone discs */}
-        {MILESTONES.filter((m) => m.tier > 1).map((m) => (
-          <MilestoneDisc key={m.id} milestone={m} complete={tierComplete(m.tier)} radius={MILESTONE_R} />
+        {/* Each canopy chain terminates in its own leaf. Tier I keeps a disc:
+            it is the trunk's ORIGIN rather than a terminus, and a leaf there
+            would imply the trunk stops at it when it carries on downward. */}
+        {canopyTiers.map((c) => (
+          <CrownLeaf
+            key={`crown-${c.id}`}
+            x={CROWNS[c.tier].x}
+            y={CROWNS[c.tier].y}
+            numeral={CROWNS[c.tier].numeral}
+            complete={tierComplete(c.tier)}
+          />
         ))}
         <MilestoneDisc
           milestone={MILESTONES[0]}
