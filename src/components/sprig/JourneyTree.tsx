@@ -115,7 +115,7 @@ const GROUND_Y = 978;
 const CHAIN_START: Record<number, Pt> = {
   2: [404, 616],
   3: [412, 590],
-  4: [416, 640],
+  4: [413, 570],
 };
 
 const DISC_R = 15;
@@ -322,7 +322,11 @@ const APPLICATION_NODES: Node[] = [
 
 const MATHEMATICS_NODES: Node[] = [
   { id: "m1", x: 409, y: 514, chapter: "III.I",   title: "Percentages in Real Life", titleLines: ["Percentages in", "Real Life"], tier: 3, topicOrder: 1, side: "left" },
-  { id: "m2", x: 413, y: 435, chapter: "III.II",  title: "Simple Interest",          tier: 3, topicOrder: 2, side: "right" },
+  // Flipped to the left and lifted. On the right its label ran from x=465 to
+  // x=580, which put it over the Mathematics AND Mastery crowns at once and
+  // across the lesson path. The left side of this chain had room once it moved
+  // up ten units clear of m1 below it.
+  { id: "m2", x: 413, y: 425, chapter: "III.II",  title: "Simple Interest",          tier: 3, topicOrder: 2, side: "left" },
   { id: "m3", x: 415, y: 355, chapter: "III.III", title: "Compound Interest Intuitively", titleLines: ["Compound Interest", "Intuitively"], tier: 3, topicOrder: 3, side: "left" },
   { id: "m4", x: 414, y: 278, chapter: "III.IV",  title: "Inflation Basics",         tier: 3, topicOrder: 4, side: "right" },
   { id: "m5", x: 413, y: 198, chapter: "III.V",   title: "Why Some Choices Are Riskier", titleLines: ["Why Some Choices", "Are Riskier"], tier: 3, topicOrder: 5, side: "left" },
@@ -749,8 +753,14 @@ function TierCanopy({
 
   return (
     <g>
+      {/* The silhouette is published under an id so two things can reuse it:
+          this clip, and the "outside every canopy" mask that lets the limbs be
+          redrawn on top without painting over any foliage. */}
+      <defs>
+        <path id={`sprig-canopy-shape-${id}`} d={main} />
+      </defs>
       <clipPath id={`sprig-canopy-${id}`}>
-        <path d={main} />
+        <use href={`#sprig-canopy-shape-${id}`} />
       </clipPath>
       <path d={main} fill={tone.fill} stroke={CANOPY_EDGE} strokeWidth={CANOPY_EDGE_W} />
       <g clipPath={`url(#sprig-canopy-${id})`}>
@@ -921,7 +931,7 @@ function TierHeader({
   x: number;
   y: number;
   label: string;
-  anchor: "middle" | "end";
+  anchor: "middle" | "end" | "start";
 }) {
   const textRef = useRef<SVGTextElement | null>(null);
   const [width, setWidth] = useState<number | null>(null);
@@ -944,8 +954,12 @@ function TierHeader({
     };
   }, [label]);
 
-  const x1 = width === null ? 0 : anchor === "end" ? x - width : x - width / 2;
-  const x2 = width === null ? 0 : anchor === "end" ? x : x + width / 2;
+  // The rule under the label spans the measured glyphs, so where it starts
+  // depends on which end the text is anchored from.
+  const x1 =
+    width === null ? 0 : anchor === "end" ? x - width : anchor === "start" ? x : x - width / 2;
+  const x2 =
+    width === null ? 0 : anchor === "end" ? x : anchor === "start" ? x + width : x + width / 2;
 
   return (
     <g>
@@ -1344,6 +1358,54 @@ export function JourneyTree({ journey }: { journey: Journey }) {
     { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 545, dx: 52,  pad: 28 },
   ];
 
+  const branches = (
+    <>
+        {/* Three branches growing out of the trunk into each canopy. Each one is
+            a different length and takes a different route — the asymmetry is
+            the point, a mirrored tree reads as a logo rather than a plant.
+            
+            THE ORIGINS ARE STAGGERED, which is the fix for the tangle. All
+            three used to leave the trunk within five units of each other
+            (408, 411, 413, all at y=606) and immediately fan out, so at the
+            junction they overlapped into a single knot of crossing edges with
+            no trunk visible between them. Real branches leave a trunk at
+            different heights. Spacing the departures ~26 units apart down the
+            trunk gives each one its own visible root and leaves trunk showing
+            in the gaps. */}
+        <Limb
+          segs={[
+            [[404, 616], [380, 578], [326, 530], [266, 466]],
+            [[266, 466], [210, 410], [158, 300], [118, 150]],
+          ]}
+          w0={20}
+          w1={13}
+          fill={LIMB_FILL}
+        />
+        <Limb
+          segs={[[[412, 590], [416, 500], [410, 330], [415, 140]]]}
+          w0={20}
+          w1={13}
+          fill={LIMB_FILL}
+        />
+        {/* Leaves the trunk ABOVE the trunk's own I.V label rather than below
+            it. At its old departure of (416, 640) this limb ran diagonally
+            straight through "Setting a Goal That Actually Matters to You",
+            whose box spans x 462-636 at y 578-643 — measured, 6% of that
+            label sat on the limb. There is no route from a lower departure
+            that misses a label 174 units wide sitting directly in the way, so
+            the limb goes over the top of it instead. */}
+        <Limb
+          segs={[
+            [[413, 570], [452, 546], [520, 520], [578, 470]],
+            [[578, 470], [640, 388], [678, 268], [690, 152]],
+          ]}
+          w0={20}
+          w1={13}
+          fill={LIMB_FILL}
+        />
+    </>
+  );
+
   return (
     // The wrapper is given the viewBox's own aspect ratio and the SVG is
     // stretched to fill it. That is what lets the button overlay below be
@@ -1382,45 +1444,7 @@ export function JourneyTree({ journey }: { journey: Journey }) {
           fill={TRUNK_FILL}
         />
 
-        {/* Three branches growing out of the trunk into each canopy. Each one is
-            a different length and takes a different route — the asymmetry is
-            the point, a mirrored tree reads as a logo rather than a plant.
-            
-            THE ORIGINS ARE STAGGERED, which is the fix for the tangle. All
-            three used to leave the trunk within five units of each other
-            (408, 411, 413, all at y=606) and immediately fan out, so at the
-            junction they overlapped into a single knot of crossing edges with
-            no trunk visible between them. Real branches leave a trunk at
-            different heights. Spacing the departures ~26 units apart down the
-            trunk gives each one its own visible root and leaves trunk showing
-            in the gaps. */}
-        <Limb
-          segs={[
-            [[404, 616], [380, 578], [326, 530], [266, 466]],
-            [[266, 466], [210, 410], [158, 300], [118, 150]],
-          ]}
-          w0={20}
-          w1={13}
-          fill={LIMB_FILL}
-        />
-        <Limb
-          segs={[[[412, 590], [416, 500], [410, 330], [415, 140]]]}
-          w0={20}
-          w1={13}
-          fill={LIMB_FILL}
-        />
-        {/* Leaves the trunk lowest of the three, and now stops at the canopy
-            rather than running up to a disc above it — the chain inside the
-            foliage carries on from here to the crown leaf. */}
-        <Limb
-          segs={[
-            [[416, 640], [452, 598], [528, 552], [594, 476]],
-            [[594, 476], [648, 404], [678, 280], [690, 152]],
-          ]}
-          w0={20}
-          w1={13}
-          fill={LIMB_FILL}
-        />
+        {branches}
 
         {/* Canopy foliage: one organic mass behind each tier.
             Neighbouring canopies overlap by 150-200 units, so draw order is
@@ -1458,6 +1482,38 @@ export function JourneyTree({ journey }: { journey: Journey }) {
               pad={c.pad}
             />
           ))}
+
+        {/*
+          THE BRANCHES, AGAIN, ON TOP — but only where there is no foliage.
+
+          All three limbs are one colour and always were: var(--forest), the
+          same constant. They did not look it, because a limb is drawn BEFORE
+          the canopies and the Application limb happens to run under the
+          Mathematics crown for most of its length between the trunk and its
+          own canopy. What was visible along it was that crown's shade lobe at
+          oklch(0.828 0.044 167) — a pale green — so the branch read as a
+          lighter shade than its two neighbours rather than as buried.
+
+          Redrawing them after the canopies fixes the colour. Masking that
+          second pass to the region OUTSIDE every canopy is what keeps the fix
+          confined to the limb segment itself: inside a crown the mask removes
+          the limb entirely and the foliage and lesson path are untouched,
+          which is the one thing this change must not disturb.
+        */}
+        <mask
+          id="sprig-outside-canopies"
+          maskUnits="userSpaceOnUse"
+          x={VB_X}
+          y={VB_Y}
+          width={VB_W}
+          height={VB_H}
+        >
+          <rect x={VB_X} y={VB_Y} width={VB_W} height={VB_H} fill="white" />
+          {canopyTiers.map((c) => (
+            <use key={c.id} href={`#sprig-canopy-shape-${c.id}`} fill="black" />
+          ))}
+        </mask>
+        <g mask="url(#sprig-outside-canopies)">{branches}</g>
 
         {/* The lesson journey through each canopy, lit as far as it is walked */}
         {canopyTiers.map((c) => (
@@ -1515,11 +1571,12 @@ export function JourneyTree({ journey }: { journey: Journey }) {
         <TierHeader x={114} y={18} label="Application" anchor="middle" />
         <TierHeader x={415} y={18} label="Mathematics" anchor="middle" />
         <TierHeader x={684} y={18} label="Mastery" anchor="middle" />
-        {/* Moved from x=334 out to x=196. At 334 it sat directly against the
-            left-hand trunk labels and read as one more of them; the three
-            canopy headers all stand clear of their content, and this now does
-            the same for the trunk. */}
-        <TierHeader x={196} y={655} label="Essentials" anchor="end" />
+        {/* Right of the trunk now, at its middle height. The trunk labels
+            alternate sides, and y≈840 is the one band where the RIGHT side is
+            free: t3's two-line label ends at y=789 and t1's begins at y=881,
+            with t2 in between sitting on the left. So this drops into a gap
+            rather than being wedged beside a label. */}
+        <TierHeader x={470} y={840} label="Essentials" anchor="start" />
 
         {/* Each canopy chain terminates in its own leaf. Tier I keeps a disc:
             it is the trunk's ORIGIN rather than a terminus, and a leaf there
