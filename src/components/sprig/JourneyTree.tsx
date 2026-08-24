@@ -91,10 +91,10 @@ type Milestone = {
 // attempt at this fix used -168/1184, which was correct until the spacing
 // change below made the artwork 12 units wider than it had been when measured.
 // If you touch the spacing, re-measure the union bbox and come back here.
-const VB_X = -190;
-const VB_Y = -12;
-const VB_W = 1226;
-const VB_H = 1036;
+const VB_X = -226;
+const VB_Y = -20;
+const VB_W = 1293;
+const VB_H = 1044;
 const VIEW_BOX = `${VB_X} ${VB_Y} ${VB_W} ${VB_H}`;
 
 const TRUNK_X = 410;
@@ -134,13 +134,24 @@ const LINE = 26;
  */
 const LABEL_GAP = 52;
 /**
- * Rough average glyph width at TITLE_SIZE, used only to estimate how much room
- * a label needs so the canopy can be grown around it. An estimate is fine here
- * -- it pads a decorative silhouette, it does not align anything. (Contrast the
- * tier headers below, where a guessed width was a visible bug and is now
- * measured.)
+ * Per-character width estimate at TITLE_SIZE, used to size the box each canopy
+ * is grown around.
+ *
+ * IT MUST BE AN OVER-ESTIMATE, WHICH 8.2 WAS NOT. The old comment here said an
+ * estimate was fine because it only pads a decorative silhouette and aligns
+ * nothing. That is wrong in one direction: when the estimate comes in SHORT,
+ * the canopy is grown around a box narrower than the text, and the text ends up
+ * poking out through its own outline. Measured against the rendered glyphs, the
+ * real figure ranges from 6.83 to 9.35 per character depending on the letters —
+ * "Intuitively" is narrow, "Scams &" and "Why Some Choices" are wide — so 8.2
+ * left the widest labels about fifteen units short and half a dozen of them
+ * grazing the contour.
+ *
+ * 9.4 clears the worst case. Narrow labels now get a box wider than they need,
+ * which costs a little canopy area and nothing else; the failure is asymmetric,
+ * so the estimate should be too.
  */
-const CHAR_W = 8.2;
+const CHAR_W = 9.4;
 
 // --- Palette ----------------------------------------------------------------
 // Every colour is derived from the Sprig tokens in index.css rather than
@@ -194,12 +205,17 @@ const LIMB_FILL = "var(--forest)";
  * and there is no longer a cap on how light the foliage may go -- which is
  * what makes the celebratory end of the scale reachable at all.
  *
- * The dormant chromas are LOW BUT NOT ZERO (about 0.02 against 0.05-0.06 for
- * grown). Taken to nearly grey they were drab in the right way but left the
- * three crowns separated only by their outlines and a hundredth of lightness
- * each, which is close to the complaint that started this: three canopies you
- * cannot tell apart. A trace of hue keeps them distinguishable at a glance
- * while still reading as clearly unlit next to a tier in leaf.
+ * A DORMANT CROWN IS A PALE VERSION OF ITS OWN COLOUR, NOT A GREY ONE. An
+ * earlier pass pushed dormant chroma down to about 0.010, which is grey for
+ * all practical purposes, and the whole tree before a student starts read as a
+ * technical diagram rather than as a plant waiting to grow. Dormant now keeps
+ * its tier hue at roughly 0.015 chroma and sits slightly LIGHTER than the grown
+ * fill, so it reads as green but faint.
+ *
+ * The grown chromas went up in the same move, to about 0.040, specifically to
+ * protect the contrast that colouring the dormant state costs. Dormant to grown
+ * is now a 2.5x jump in chroma plus about 0.025 of lightness, which is what
+ * keeps a branch in leaf standing out from the ones a student has not reached.
  */
 type CanopyTone = { fill: string; shade: string };
 
@@ -214,13 +230,13 @@ const mix = (a: string, pct: number, b: string) =>
 const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> = {
   // Application — warm mint. The first branch a student meets.
   2: {
-    grown: { fill: "oklch(0.900 0.030 152)", shade: "oklch(0.856 0.034 154)" },
-    dormant: { fill: "oklch(0.906 0.011 152)", shade: "oklch(0.866 0.013 154)" },
+    grown: { fill: "oklch(0.888 0.042 152)", shade: "oklch(0.842 0.047 154)" },
+    dormant: { fill: "oklch(0.912 0.016 152)", shade: "oklch(0.874 0.019 154)" },
   },
   // Mathematics — the --mint token's own hue, the middle of the family.
   3: {
-    grown: { fill: "oklch(0.886 0.027 165)", shade: "oklch(0.842 0.031 167)" },
-    dormant: { fill: "oklch(0.893 0.010 165)", shade: "oklch(0.853 0.012 167)" },
+    grown: { fill: "oklch(0.874 0.039 165)", shade: "oklch(0.828 0.044 167)" },
+    dormant: { fill: "oklch(0.900 0.015 165)", shade: "oklch(0.862 0.018 167)" },
   },
   // Mastery — cool mint, furthest from the trunk in both senses. Hue 186 and
   // not 195: at 195 the fill crossed out of green entirely and read as a pale
@@ -228,8 +244,8 @@ const CANOPY_TONES: Record<number, { grown: CanopyTone; dormant: CanopyTone }> =
   // rather than the third crown of the same tree. 186 is still clearly the
   // coolest of the three without leaving the family.
   4: {
-    grown: { fill: "oklch(0.872 0.024 178)", shade: "oklch(0.828 0.028 180)" },
-    dormant: { fill: "oklch(0.880 0.009 178)", shade: "oklch(0.840 0.011 180)" },
+    grown: { fill: "oklch(0.860 0.036 178)", shade: "oklch(0.814 0.041 180)" },
+    dormant: { fill: "oklch(0.888 0.014 178)", shade: "oklch(0.850 0.017 180)" },
   },
 };
 
@@ -377,8 +393,12 @@ const CROWNS: Record<number, { x: number; y: number; numeral: string }> = {
   4: { x: 690, y: 150, numeral: "IV" },
 };
 
-const CROWN_W = 46;
-const CROWN_H = 62;
+// The drawn leaf is NARROWER THAN CROWN_W: the teardrop's control points pull
+// its widest point in to about 75% of this figure, so 46 was rendering a 34.5
+// wide leaf around a numeral 27 wide — under four units of padding a side, and
+// less than that at the height the text actually sits. 62 renders ~46.5.
+const CROWN_W = 62;
+const CROWN_H = 72;
 
 /**
  * Only the trunk hub now. Tiers II-IV moved to CROWNS above when their
@@ -643,6 +663,9 @@ function tierPoints(nodes: Node[], crown?: { x: number; y: number }): Pt[] {
  * contour past `yMax` by up to about 12%. That is why the Mastery canopy needed
  * its yMax pulled well clear of the trunk label rather than just below it.
  */
+/** How far the contour must stay outside the boxes it is grown around. */
+const MIN_CLEARANCE = 14;
+
 function organicBlob(
   pts: Pt[],
   pad: number,
@@ -656,6 +679,8 @@ function organicBlob(
 
   const N = 42;
   const raw: number[] = [];
+  /** The unpadded support distance per direction — what the contour must clear. */
+  const support: number[] = [];
   for (let i = 0; i < N; i++) {
     const a = (i / N) * Math.PI * 2;
     const ux = Math.cos(a);
@@ -666,6 +691,7 @@ function organicBlob(
     // Trim the overhang, but never below the support distance itself.
     if (opts?.yMax !== undefined && uy > 0.05) r = Math.max(h, Math.min(r, (opts.yMax - cy) / uy));
     raw.push(r);
+    support.push(h);
   }
 
   const kernel = [1, 3, 5, 3, 1];
@@ -676,7 +702,19 @@ function organicBlob(
       sum += w * raw[(i + j - 2 + N) % N];
       weight += w;
     });
-    return sum / weight;
+    // A THIRD RULE, and the one that was missing. Smoothing averages each
+    // radius with its neighbours, so in any direction where the support is a
+    // LOCAL MAXIMUM -- which is exactly what a label corner sticking out past
+    // its neighbours is -- the average comes out lower than the raw value and
+    // the contour is pulled in toward the content. Measured with
+    // isPointInStroke, that was nine labels grazing their own outline, and no
+    // amount of extra `pad` fixed it because smoothing ate the padding at
+    // precisely the protruding directions that needed it.
+    //
+    // Same reasoning as the `outward` clamp on the wobble below: the contour
+    // may bulge outward as much as it likes, and may never dip inside the
+    // content plus a minimum clearance.
+    return Math.max(sum / weight, support[i] + MIN_CLEARANCE);
   });
 
   const scale = opts?.scale ?? 1;
@@ -1210,12 +1248,12 @@ function CrownLeaf({
       )}
       <text
         x={x}
-        y={y + 8}
+        y={y + 6}
         textAnchor="middle"
         fill={complete ? "var(--cream)" : "var(--forest)"}
         fontFamily="var(--font-display, 'Fraunces', serif)"
         fontStyle="italic"
-        fontSize={21}
+        fontSize={17}
       >
         {numeral}
       </text>
@@ -1321,6 +1359,12 @@ export function JourneyTree({ journey }: { journey: Journey }) {
   const renderNodeArt = (list: Node[]) =>
     list.map((n) => <LessonNodeArt key={n.id} node={n} status={resolve(n).status} />);
 
+  // `pad` is the clearance between the label boxes the crown is grown around
+  // and the contour drawn round them, so it is the number that decides whether
+  // a label touches its own outline. Seven of them were grazing it — measured
+  // with isPointInStroke rather than by eye, since a one-sample graze is
+  // invisible in a screenshot and obvious on the page. Raised across all three.
+  //
   // `dx` pushes a canopy sideways and `pad` inflates it. Application and
   // Mastery are pushed further out than they were (-14 -> -30, +18 +> +34) to
   // open a real gap either side of Mathematics: the three used to overlap
@@ -1334,9 +1378,9 @@ export function JourneyTree({ journey }: { journey: Journey }) {
   // its area landing on near-black foliage. 578 clears it and still contains
   // Mastery's own lowest node box (node r1 bottoms out at y=577).
   const canopyTiers = [
-    { tier: 2, nodes: APPLICATION_NODES, seed: 1.3, id: "app",  yMax: 600, dx: -30, pad: 30 },
-    { tier: 3, nodes: MATHEMATICS_NODES, seed: 2.7, id: "math", yMax: 530, dx: 0,   pad: 24 },
-    { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 545, dx: 34,  pad: 32 },
+    { tier: 2, nodes: APPLICATION_NODES, seed: 1.3, id: "app",  yMax: 600, dx: -48, pad: 26 },
+    { tier: 3, nodes: MATHEMATICS_NODES, seed: 2.7, id: "math", yMax: 530, dx: 0,   pad: 22 },
+    { tier: 4, nodes: MASTERY_NODES,     seed: 4.9, id: "mast", yMax: 545, dx: 52,  pad: 28 },
   ];
 
   return (
@@ -1508,9 +1552,9 @@ export function JourneyTree({ journey }: { journey: Journey }) {
         {/* Tier headers. The three canopy names share a baseline high above the
             drawing; "Essentials" is the only one set beside its subject rather
             than above it, because the trunk milestone sits mid-drawing. */}
-        <TierHeader x={114} y={62} label="Application" anchor="middle" />
-        <TierHeader x={415} y={62} label="Mathematics" anchor="middle" />
-        <TierHeader x={684} y={62} label="Mastery" anchor="middle" />
+        <TierHeader x={114} y={18} label="Application" anchor="middle" />
+        <TierHeader x={415} y={18} label="Mathematics" anchor="middle" />
+        <TierHeader x={684} y={18} label="Mastery" anchor="middle" />
         {/* Moved from x=334 out to x=196. At 334 it sat directly against the
             left-hand trunk labels and read as one more of them; the three
             canopy headers all stand clear of their content, and this now does
