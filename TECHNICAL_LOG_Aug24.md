@@ -2,17 +2,20 @@
 
 ## What was built
 
-Two commits, both on the journey tree:
+Four commits, all on the journey tree:
 
 | commit | what |
 |---|---|
 | `dee1018` | a seven-item design pass — leaf termini, colour, outlines, spacing, the trunk junction, the Essentials label, scale |
 | `51ae7fb` | four fixes found by testing that pass at two progress states |
+| `cc77e3b` | canopy colours fixed permanently; the grown/dormant distinction removed |
+| `51dbf55` | limb colour, the Essentials label, and two overlapping labels |
 
-The second commit is where the interesting material is. Two of its four fixes
+The interesting material is in the second and fourth. Two of `51ae7fb`'s fixes
 turned out to be the *same kind of bug* wearing different clothes — an
 approximation whose error had a direction, and nobody had asked which direction
-was safe. That pair gets the longest section.
+was safe. `51dbf55` then produced its sharper cousin: a measurement pointed at
+the wrong object entirely. Those get the longest sections.
 
 ---
 
@@ -322,20 +325,191 @@ message:
 
 ---
 
+## 10. Deleting an encoding, and letting the compiler check you finished
+
+Late in the day the canopy colours were fixed permanently at their saturated
+values, with the grown/dormant distinction removed entirely. A brand-new
+student now sees the same drawing a finished one sees.
+
+The brief named colour. The honest reading was wider, because **five other
+things were also keyed to progress**:
+
+- the highlight lobe, which appeared only once a tier was reached — so each
+  crown visibly changed shape as a student advanced
+- the crown leaves, outlined until a tier was finished and filled after
+- the fruit, revealed one per completed topic
+- the trunk leaves, same reveal
+- the ring inside the Tier I hub
+
+All fixed. Only the node icons and the lit portion of the path move now.
+
+**Why this is not a loss of information.** Progress was encoded three times
+over: node icons (check versus padlock), path lighting, and colour. The third
+copy cost the tree its colour for the entire period a student is most likely to
+be forming an impression of it — the beginning — in exchange for a fact that
+was already on screen twice.
+
+### The compiler as the completeness check
+
+The satisfying part came after. With colour no longer reading progress,
+`grown()` and `tierComplete()` had no callers left and `tsc` said so:
+
+```
+error TS6133: 'grown' is declared but its value is never read.
+error TS6133: 'tierComplete' is declared but its value is never read.
+```
+
+Those two errors are the evidence the encoding was fully removed. Had either
+survived, something downstream would still have been consuming progress for a
+purpose that was meant to be gone — and the natural instinct on seeing an
+unused-variable error is to silence it, which would have hidden exactly the
+signal worth reading.
+
+What remains is one caller of `completedInTier()`, the path fraction. That is
+the invariant now, and it is a much easier one to keep than "remember not to
+key decoration off progress": **progress reaches the drawing through node
+status and through one number, and nowhere else.**
+
+**The concept.** When you remove a capability, the question is not "does it
+still build" but "what became dead?" Live leftovers mean the removal was
+partial. Dead ones are the proof it was not.
+
+### Verifying an absence
+
+"The colours must not change" is a claim about a *non-difference*, which is
+awkward to check by eye — three screenshots that look similar prove very little.
+
+So every non-node visual was serialised and hashed: canopy fills and strokes,
+shade lobes with their opacities, crown leaf fills and strokes, numeral fills,
+every fruit coordinate, trunk leaf count. One account, three progress states:
+
+```
+4/80    hash 3807029625    1 check,  18 locks, no lit path
+32/80   hash 3807029625    8 checks, 11 locks, one path lit to 0.5
+80/80   hash 3807029625   20 checks,  0 locks, three paths lit to 1
+```
+
+Same 913-character fingerprint three times, with only the progress figures
+moving. That is a claim about sameness stated in a form that can actually fail.
+
+---
+
+## 11. A colour bug that was a paint-order bug — and a probe that lied
+
+The report: the limb running from the trunk to the Application canopy is a
+lighter green than the other two.
+
+All three limbs are `fill={LIMB_FILL}`, one constant, `var(--forest)`. The DOM
+agreed — identical computed fills, opacity 1, on all four limb paths. So the
+question was never "why is this one a different colour" but **"what is on top of
+it?"**
+
+`elementFromPoint`, walked along each limb's centreline, answered immediately:
+
+```
+applicationLimb (340,540)  path fill=oklch(0.828 0.044 167)
+applicationLimb (300,500)  path fill=oklch(0.828 0.044 167)
+applicationLimb (260,462)  path fill=oklch(0.828 0.044 167)
+```
+
+That value is the *Mathematics* shade lobe. Limbs are drawn before the canopies,
+and the Application limb happens to pass under the Mathematics crown for most of
+its length between the trunk and its own canopy. The branch was not a different
+shade. It was buried, and what showed along it was a neighbour's foliage.
+
+The fix is to draw the three limbs again *after* the canopies, masked to the
+region outside every crown:
+
+```tsx
+<mask id="sprig-outside-canopies" maskUnits="userSpaceOnUse" ...>
+  <rect ... fill="white" />
+  {canopyTiers.map((c) => <use href={`#sprig-canopy-shape-${c.id}`} fill="black" />)}
+</mask>
+<g mask="url(#sprig-outside-canopies)">{branches}</g>
+```
+
+The mask is the part that matters, and it is what makes the change safe: inside
+a crown the second pass is removed entirely, so foliage, lesson paths and
+everything else inside a canopy are untouched. The fix reaches exactly the
+segment that was wrong and no further. Each canopy now publishes its silhouette
+under an id so both its own clip and this mask can reference the same shape.
+
+### The probe that over-reported
+
+Checking the result, a new test asked "does any label sit on a limb?" and named
+three:
+
+```
+III.I Percentages in Real Life : 15 / 75 samples
+III.II Simple Interest         :  1
+IV.II The Real Compound        :  2
+```
+
+Fifteen samples out of seventy-five is 20% of a label — alarming, and it would
+have sent me moving a node that did not need moving.
+
+It was the test that was wrong. `isPointInFill` answers *"is this point inside
+this shape"*, which is a question about geometry. It says nothing about whether
+the shape is **painted** there — and after the masking change, a limb under
+foliage is removed at render time. "Percentages in Real Life" sits inside the
+Mathematics canopy, where the Application limb beneath it is masked away and
+invisible.
+
+Counting only points that are on a limb **and** outside every canopy gives zero,
+across all three progress states.
+
+**The concept, and it is the sharper cousin of section 3's.** Section 3 was
+about an estimate whose error had a direction nobody checked. This is about
+measuring the wrong object entirely: a query against the geometric model is not
+a query against the rendered result, and the gap between them is exactly the
+compositing — masks, clips, paint order, opacity — that this file is full of.
+When a probe and a screenshot disagree, the screenshot is not automatically
+right, but the probe has to be able to say which question it answered.
+
+### The two labels, for the record
+
+- **I.V "Setting a Goal That Actually Matters to You"** had the Mastery limb
+  running diagonally through it, 6% of the label on the limb. At 174 units wide
+  the label sits squarely in the corridor, so no lower departure could miss it;
+  the limb now leaves the trunk *above* it, at y=570 instead of 640.
+- **III.II "Simple Interest"** ran x=465 to 580 on the right, which put it over
+  the Mathematics and Mastery crowns at once and across the lesson path. Flipped
+  to the left and lifted clear of the node below.
+
+And **Essentials** moved to the right of the trunk at y=840 — the one band where
+that side is free, since the trunk labels alternate and t3's ends at 789 while
+t1's begins at 881. Measured 33.5 units to the nearest label. `TierHeader`
+gained a `start` anchor, and its underline now spans the measured glyphs from
+whichever end the text is anchored.
+
+---
+
 ## The thread
 
-Yesterday's log ended on whether the thing you are looking at is the thing you
-think it is. Today is narrower and sharper: **the value was approximately right,
-and the direction of the error was the whole bug.**
+Three groups today, each needing a different question.
 
-- `CHAR_W` was an average. The safe direction was up. Nobody had asked.
-- Smoothing was a mean. The safe direction was outward. The rule was written
-  down, in this file, applied to the neighbouring operation and not this one.
-- `CROWN_W` was a control-point parameter being read as a width. The shape was
-  25% narrower than the number that named it.
+**The morning's design pass** was mostly ordinary work, with one trap: a fix
+that only half-fixed, because moving the limbs without moving the chains left
+the tangle intact while looking like progress.
 
-None of the three is wrong in the sense of being a typo. Each is a number doing
-approximately the right thing, where "approximately" had a sign and the sign was
-never checked. The instrument that catches all three is the same one — measure
-the rendered result rather than reasoning about the input — and it is cheap
-enough that it should come before the bug rather than after it.
+**The afternoon's four fixes** were about approximations whose error had a
+direction nobody had checked:
+
+- `CHAR_W` was an average. The safe direction was up.
+- Smoothing was a mean. The safe direction was outward — and the rule was
+  already written in this file, applied to the neighbouring operation and not
+  this one.
+- `CROWN_W` was a control-point parameter being read as a width; the shape
+  rendered 25% narrower than the number naming it.
+
+**The evening's two commits** were about measuring the wrong object:
+
+- The "lighter" limb was the same colour as its neighbours, with something
+  painted over it.
+- The probe that found three labels on a limb was asking about geometry when
+  the question was about what is visible.
+- And the claim that most needed proving — *these colours do not change* — is a
+  non-difference, which no screenshot can establish and a hash can.
+
+Reading the code harder finds none of these. Each needs a specific instrument,
+pointed at the specific object the claim is actually about.
