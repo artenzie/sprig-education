@@ -291,7 +291,7 @@ function Landing() {
             </p>
 
             <a
-              href="mailto:hello@sprig.study"
+              href="mailto:hello@sprig.education"
               className="group mt-10 inline-flex items-center gap-4"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5">
@@ -302,7 +302,7 @@ function Landing() {
                   Write to
                 </span>
                 <span className="block font-display text-[26px] italic tracking-[-0.01em] text-foreground group-hover:text-forest">
-                  hello@sprig.study
+                  hello@sprig.education
                 </span>
               </span>
               <ArrowUpRight className="ml-2 h-4 w-4 text-muted-foreground transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-forest" />

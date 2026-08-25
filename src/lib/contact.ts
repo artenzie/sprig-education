@@ -73,7 +73,7 @@ export async function submitContactRequest(
     console.error("Unexpected error leaving a contact request", error);
     return {
       ok: false,
-      message: "That didn't send. Please try again in a moment — or email hello@sprig.study.",
+      message: "That didn't send. Please try again in a moment — or email hello@sprig.education.",
     };
   }
 

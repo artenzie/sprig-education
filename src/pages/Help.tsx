@@ -150,7 +150,7 @@ function Help() {
 // anonymous by design, so Sprig has nowhere to reply to. Not "we aim to reply
 // in two days" — we cannot reply at all. Saying so is more useful than any
 // number would be.
-const CONTACT_EMAIL = "hello@sprig.study";
+const CONTACT_EMAIL = "hello@sprig.education";
 
 function ContactBox() {
   const [msg, setMsg] = useState("");

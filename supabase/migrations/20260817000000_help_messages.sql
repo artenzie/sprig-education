@@ -122,7 +122,7 @@ begin
   if (select count(*)
         from public.help_messages
        where created_at > now() - interval '1 hour') >= 60 then
-    raise exception 'Sprig is getting a lot of messages right now — please try again a bit later, or email hello@sprig.study.';
+    raise exception 'Sprig is getting a lot of messages right now — please try again a bit later, or email hello@sprig.education.';
   end if;
 
   insert into public.help_messages (message, student_id)

@@ -55,7 +55,7 @@ export async function submitHelpMessage(
     console.error("Unexpected error sending a help message", error);
     return {
       ok: false,
-      message: "That didn't send. Please try again in a moment — or email hello@sprig.study.",
+      message: "That didn't send. Please try again in a moment — or email hello@sprig.education.",
     };
   }
 

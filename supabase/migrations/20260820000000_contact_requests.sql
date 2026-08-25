@@ -125,7 +125,7 @@ begin
   if (select count(*)
         from public.contact_requests
        where created_at > now() - interval '1 hour') >= 30 then
-    raise exception 'Sprig is getting a lot of requests right now — please try again later, or email hello@sprig.study.';
+    raise exception 'Sprig is getting a lot of requests right now — please try again later, or email hello@sprig.education.';
   end if;
 
   insert into public.contact_requests (email, message)
