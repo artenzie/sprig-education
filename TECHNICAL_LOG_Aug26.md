@@ -366,3 +366,191 @@ operations are the ones that report success.**
 
 So the same instruction applies to the password change as to everything else in
 this codebase: **verify it by signing in, not by trusting the success message.**
+
+---
+
+## Part 4 — the mobile pass
+
+Same day, second half. The app had never been opened at a phone width, and the
+school pilot is going to happen on phones.
+
+### Getting a 375px viewport at all
+
+The obvious move — resize the browser window — did not work. The resize tool
+reported success three times and `window.innerWidth` stayed at 1707px, because
+the window was maximized and Chrome will not resize a maximized window.
+
+The workaround is worth remembering, because it is better than the thing it
+replaced: **an iframe is a real viewport.** A document inside
+`<iframe width="375">` gets a 375px viewport, and CSS media queries inside it
+evaluate against the iframe, not the page hosting it. Serving the harness from
+Vite's own `public/` folder made it same-origin too, which meant the test could
+*measure* the DOM rather than squint at screenshots:
+
+```js
+const d = frame.contentDocument;
+d.documentElement.scrollWidth - frame.contentWindow.innerWidth  // overflow
+```
+
+That distinction — measuring versus eyeballing — is what produced numbers
+precise enough to act on, and it caught two bugs a screenshot would have hidden.
+
+### The bug: eleven gutters
+
+Five pages overflowed by exactly 369px. Not "roughly" — identically, which is
+always a clue that one cause is behind all of them.
+
+A 12-column grid has **11 gutters**. At `gap-16` (4rem) that is 11 × 64px =
+**704px of gutter before a single pixel of content**. A 375px phone, minus
+`px-10` on both sides, offers 280px. The gutters alone need two and a half
+times that.
+
+CSS does not error here. It shrinks the columns until they cannot shrink
+further, which is zero:
+
+```
+gridTemplateColumns: "0px 0px 0px 0px 0px 0px 0px 0px 0px 0px 0px 0px"
+```
+
+Then every `col-span-12` child spans twelve 0px columns *plus the eleven
+gutters between them* — 704px. Add the 40px left padding and the document is
+744px wide inside a 375px window. 744 − 375 = 369.
+
+**The lesson is about which value is load-bearing.** `gap-16` is invisible on a
+desktop: 1160px minus 704px of gutter still leaves 38px per column, and nothing
+looks wrong. The gap only becomes the dominant term when the container gets
+small. A value that is decorative at one size can be structural at another, and
+the only way to find out is to try the small size.
+
+### The fix, and why it is at `lg`
+
+Every one of these grids already had children written as
+`col-span-12 lg:col-span-4` — full width on mobile, splitting at `lg`. So the
+layout was *already* single-column on a phone. Only the gutter arithmetic was
+wrong.
+
+That is why the fix switches at the same breakpoint the columns do:
+
+```
+grid-cols-12 gap-x-0 gap-y-10 lg:gap-16
+```
+
+`gap-x-0` on mobile because a single full-width column has no visible gutter —
+the horizontal gap contributes nothing but the arithmetic that was breaking
+things. `gap-y-10` keeps vertical rhythm between the stacked blocks. Above
+`lg`, `gap-16` restores both, so desktop is untouched. Verified: the same grids
+still compute `64px` at 1707px.
+
+Twelve grids, not the ten first counted — two were written `gap-x-10 gap-y-6`
+and the first grep missed them.
+
+### Two bugs the fix revealed
+
+Fixing the big overflow uncovered two smaller ones on Landing that had been
+hiding inside it. Neither was caused by the fix; both had to go for the page to
+fit.
+
+**An `inline-flex` will not break a row.** The contact link is a 48px circle
+plus an email address at 26px — about 314px of unbreakable row in a 280px
+column. `flex-wrap` fixed it, which was better than shrinking the address,
+since that address is the one call to action on the page.
+
+**A word can be wider than its column.** The section headings at `text-[46px]`
+produced individual words around 300px wide. A word cannot wrap mid-word
+without `break-word`, so it simply overhung — 84px of overflow with no element
+reported as overflowing, because the offender was a zero-width `<br>` at the
+end of an unwrappable line, and the measuring script skipped zero-width nodes.
+
+That second one is a good reminder that **a measurement tool has its own
+blind spots**: the probe filtered `width === 0`, and the evidence was a
+zero-width element. The fix was to compare `scrollWidth` against the viewport
+as well, since that number cannot be filtered away by a faulty selector.
+
+### A consequence, not a regression
+
+With the sidebar finally the correct 360px, its two-column stat list gave each
+column about 110px — and one of those stats is a free-text subtopic title.
+"How Ads Are Designed to Make You Want Things" came out one word per line.
+
+The existing comment in `MetaStat` had already reasoned about this:
+
+> the accent stat is the Next SUBTOPIC TITLE, which is free text and must stay
+> free to wrap
+
+It was right; it had simply never met a 280px sidebar. `grid-cols-1
+sm:grid-cols-2` and it reads properly.
+
+### The journey tree: a two-stage failure
+
+The tree was the thing most likely to break, and it broke in a way worth
+recording, because **the two stages have opposite symptoms.**
+
+*Before the grid fix*, the tree did not shrink at all. Its cell was 704px, so
+the SVG rendered 704 × 568 — 54% of design size — and **only 48% of it was
+visible**. Fifteen of twenty lesson nodes sat off-screen, and the part pushed
+off the right edge was the trunk: Tier 1, Essentials, where every student
+starts.
+
+*After the grid fix* the tree fits, because it finally gets to scale. And that
+is the second problem, measured by constraining the wrapper and re-reading the
+geometry:
+
+| | Broken grid (704px) | Fixed grid (343px) |
+|---|---|---|
+| Scale vs. design | 0.544 | **0.265** |
+| Smallest label | 8.7px | **4.0px** |
+| Node tap target | 20.7px | **10.1px** |
+
+The labels are SVG `<text>` in viewBox units, so they scale with the artwork.
+There is no font-size to bump: at 375px the whole 1293-unit canvas is at 26.5%,
+and everything on it scales together. **The tree needs a different mobile
+representation, not a responsive tweak** — that is design work, deferred to its
+own session.
+
+### Testing the thing you cannot reach
+
+Two screens resisted rendering in the harness: the in-lesson questions and the
+in-test questions both wedged the renderer at the transition into the question
+view. Repeated attempts failed the same way.
+
+The important discipline here was **not reporting that as an app bug.** Loading
+`/test?type=baseline` at the top level worked perfectly, which proved the wedge
+belonged to the test rig, not to Sprig.
+
+The way around it used a fact established earlier: `QuestionCard` and
+`TestFlow`'s question branch contain **zero media queries**. A component with
+no breakpoints depends only on its container's width — so constraining the
+container to 375px at the top level reproduces a 375px viewport faithfully *for
+that component*. Not a general technique; a valid one precisely because the
+breakpoint count was known to be zero.
+
+It also produced the most reassuring numbers of the day. Answer options: 295px
+wide, 57–103px tall. Submit: 141 × 65. Zero overhang. The question screen — the
+one that had looked riskiest because it could not be seen — turned out to be
+among the best-behaved screens in the app.
+
+### Result
+
+| Page | Before | After |
+|---|---|---|
+| Landing | 369px overflow | 0 |
+| Login | 369px | 0 |
+| Set PIN | 369px | 0 |
+| Dashboard | 369px | 0 |
+| Topic | 369px | 0 |
+| Library, Progress, Help, Lesson, Test | already clean | 0 |
+
+Login and Set PIN inputs went from 31px to 44px below `lg` — the tap-target
+floor — and back to 31px above it, so the desktop design is pixel-identical.
+
+### The theme, again
+
+Part 3 ended on "the dangerous operations are the ones that report success."
+The mobile pass rhymes with it. `gap-16` reports success at every width; it
+just quietly stops meaning what it says below 1024px. The overflow probe
+reported no overflowing elements while the page was 84px too wide. The window
+resize reported success three times and did nothing.
+
+In every case the fix was the same: **find a number that cannot lie, and check
+that instead.** `scrollWidth` against viewport. `innerWidth` after the resize.
+The computed `gridTemplateColumns` string. Measurement beats assurance.
