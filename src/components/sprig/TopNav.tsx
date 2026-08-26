@@ -207,7 +207,19 @@ const ANNOUNCEMENTS: { icon: React.ReactNode; title: string; date?: string }[] =
 
 function NotificationsPanel() {
   return (
-    <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[320px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
+    // Below sm this is pinned to the VIEWPORT, not to the bell.
+    //
+    // `absolute right-0 w-[320px]` aligns the panel's right edge with the
+    // button's, and the bell is nowhere near the right edge of a phone -- it
+    // sits left of the avatar. So the panel ran 88px off the left of a 375px
+    // screen, which is most of the announcement text. Anchoring to a button
+    // only works while the button has a panel's width to its left.
+    //
+    // Fixed positioning inside a sticky header is measured against the
+    // viewport, which is exactly what is wanted here: a full-width sheet with
+    // equal margins, sitting clear of the 76px header. max-h + scroll because
+    // a phone in landscape has very little height to give.
+    <div className="fixed left-3 right-3 top-[84px] z-40 max-h-[70vh] w-auto overflow-y-auto rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)] sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+10px)] sm:max-h-none sm:w-[320px] sm:overflow-hidden">
       <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5">
         <span className="font-mono text-[9.5px] uppercase tracking-[0.24em] text-muted-foreground">
           Announcements
@@ -278,7 +290,13 @@ function ProfilePanel({ student, onClose }: { student: Student; onClose: () => v
   // student, not to us, not to anyone who gets hold of the database. The cost
   // is that a forgotten PIN has to be reset by a teacher instead of looked up.
   return (
-    <div className="absolute right-0 top-[calc(100%+10px)] z-40 w-[392px] overflow-hidden rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)]">
+    // Pinned to the viewport below sm, for the reason spelled out on
+    // NotificationsPanel above. This one is the worse offender of the two: at
+    // 392px it is wider than a 375px phone outright, so no amount of
+    // re-anchoring would have saved it -- the width itself had to become
+    // responsive. The leaf grid is grid-cols-4 and reflows to whatever width
+    // it is given, so the picker survives the change untouched.
+    <div className="fixed left-3 right-3 top-[84px] z-40 max-h-[70vh] w-auto overflow-y-auto rounded-xl border border-border/70 bg-background shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)] sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+10px)] sm:max-h-none sm:w-[392px] sm:overflow-hidden">
       <div className="m-3 overflow-hidden rounded-lg border border-border/60 bg-secondary/60">
         {/* Live preview. Shows the CURRENT pair, so changing either half is
             visible here before it is visible in the nav behind the panel. */}
