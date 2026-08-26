@@ -350,7 +350,7 @@ echoes what they type.
 
 ---
 
-## The recurring theme
+## The theme so far
 
 Every part of this session came back to the same idea: **the dangerous
 operations are the ones that report success.**
@@ -554,3 +554,186 @@ resize reported success three times and did nothing.
 In every case the fix was the same: **find a number that cannot lie, and check
 that instead.** `scrollWidth` against viewport. `innerWidth` after the resize.
 The computed `gridTemplateColumns` string. Measurement beats assurance.
+
+---
+
+## Part 5 — what a real phone found
+
+Part 4 was measured in a 375px iframe. This part is what turned up once the
+app was opened on an actual phone, and it is a different list. Four commits:
+the iOS zoom floor, a decision made and then reversed, the dropdown panels,
+and the navigation that was never there.
+
+### The 16px floor
+
+iOS Safari zooms the entire viewport when you focus an `input`, `textarea` or
+`select` whose computed `font-size` is below 16px. Three things make this
+worse than it sounds:
+
+- **The threshold is absolute.** 15.5px zooms exactly as 12px does. There is
+  no "close enough".
+- **The zoom is not undone on blur.** Tap the field, and the page stays
+  magnified until the reader pinches back out themselves.
+- **It is invisible in every desktop browser**, so no amount of resizing a
+  Chrome window will ever show it to you.
+
+Seven fields were under the line. The two obvious ones were the login and Set
+PIN inputs at 15px. The one that mattered most was not obvious at all:
+
+```ts
+// QuestionCard.tsx
+const inputClasses = "... px-5 py-4 text-[15px] ..."
+```
+
+That is the numeric and free-text answer box, which appears inside lessons and
+tests. A student would have got through login thinking everything was fine and
+then had the page lurch on the first typed answer, mid-question, and stay that
+way for the rest of the lesson.
+
+Not made responsive, deliberately. A 1px difference at desktop is invisible,
+and a breakpoint would be one more place for an absolute floor to be quietly
+lost later.
+
+### A decision, reversed — and why the second answer was better
+
+The nav's "Login / Sign Up" pill wrapped to two lines on a phone. It needs
+149px on one line; a 375px screen was leaving 131.
+
+The first fix shortened the label to "Log in" below `sm`. That was a real fix,
+measured against four alternatives, and it was approved. Then the phone test
+came back: the full wording was wanted.
+
+The second attempt found the 18px somewhere else entirely:
+
+```
+  header px-8 -> px-4 below sm              +32px
+  bell hidden below sm when signed out      +36px
+  cluster gap-2 -> gap-1                     +8px
+  pill's own px-4 -> px-3 below sm           +8px
+```
+
+**The first fix shrank the thing that did not fit. The better fix shrank its
+neighbours.** That is worth keeping, because the instinct always runs the
+other way: the element that overflows is the one that looks guilty. Here it
+was innocent. 64px of side padding on a 375px screen — 17% of the display —
+and a notification bell that a signed-out visitor has no use for were both
+easier to give up than four characters of a deliberate label.
+
+One option was rejected on grounds that were not about pixels. Tightening the
+pill's `tracking-[0.22em]` would have worked, and would have left this single
+label out of step with every other mono kicker in the design system. Every
+change above is spacing; none is type.
+
+### The trap of one viewport
+
+Four approaches were measured at three widths. This is the whole reason for
+doing that:
+
+|                                    | 375 | 360 | 320 |
+|------------------------------------|-----|-----|-----|
+| tighten tracking + padding         |  0  |  0  |  20 |
+| hide the "by Artem Makarov" byline |  0  |  **7** |  47 |
+| byline hidden + smaller header pad |  0  |  0  |  15 |
+| shorter label below sm             |  0  |  0  |   0 |
+
+The second row is the lesson. It is **perfect at 375 and broken at 360** — an
+utterly ordinary Android width. Had the check stopped at the one viewport
+being designed against, that option would have shipped and broken for a
+sizeable share of a class.
+
+### Anchors need something to anchor against
+
+Both nav dropdowns were positioned the same way:
+
+```
+absolute right-0 w-[392px]
+```
+
+which aligns the panel's right edge with the *button's* right edge. That is
+correct on a desktop, where the button sits far enough left that a 392px panel
+has room to hang beneath it. On a phone neither button is anywhere near that
+far from the edge:
+
+```
+  notifications   320px wide, left edge at -88px
+  avatar picker   392px wide, left edge at -49px
+```
+
+**Anchoring to a button only works while the button has a panel's width to its
+left.** The avatar picker could not be saved by re-anchoring at all — 392px
+does not fit inside a 375px screen at any offset — so the width itself had to
+become responsive.
+
+Below `sm` both are now pinned to the viewport instead: `fixed`, with 12px
+margins and `max-h-[70vh]`. Fixed positioning inside a `sticky` header
+measures against the viewport, which is exactly the behaviour wanted. The
+height cap matters more than it looks — the picker is 526px tall, and a phone
+in landscape does not have that.
+
+### The navigation that was never there
+
+```tsx
+<nav className="hidden items-center gap-1 md:flex">
+```
+
+Below 768px the links are hidden, and nothing was ever written to replace
+them. Library, Growth, Certificate and Help were unreachable on a phone except
+by typing a URL — and the Library is the readable way around the journey tree
+on a small screen, so this was quietly load-bearing.
+
+**An omission inside a media query is nearly invisible.** Nothing errors,
+nothing overflows, nothing looks broken; the pages simply cannot be reached,
+and only at sizes nobody had opened. It took someone holding a phone.
+
+The fix was much smaller than it sounds, because the component already knew
+how to do this. `TopNav` runs two dropdowns with shared open/close state,
+refs, click-outside and Escape handling. A third is a parallel addition, not
+new machinery — one state variable, one ref, two lines in the existing
+effect, and a panel reusing the existing `NavItem`. Reusing `NavItem` is the
+part that matters for the future: there is still exactly one definition of
+what a nav link looks like and what "current page" means, so the mobile and
+desktop lists cannot drift apart the next time a page is added.
+
+`NavItem` gained a `block` variant — full-width rows, 44px tall — which
+produced the most useful small catch of the day. See below.
+
+### Two more ways a measurement can lie
+
+Part 4 ended on measurement beating assurance. Part 5 supplies two more
+failure modes, both of which produced confidently wrong readings.
+
+**`querySelector` finds hidden elements.** The verification harness reported
+`bell: true` at 320px when the bell was correctly hidden, because it tested
+`!!document.querySelector(...)`. A `display: none` element is still in the
+DOM. Existence is not visibility, and the fix is to measure a rect:
+
+```js
+const vis = (el) => { const r = el.getBoundingClientRect();
+                      return r.width > 0 && r.height > 0; };
+```
+
+**`white-space: nowrap` makes "how many lines?" meaningless.** An earlier
+check counted `getClientRects().length` to decide whether the pill fitted. Once
+`nowrap` is applied that is always 1 — the text cannot wrap, so it overflows
+instead. The metric that survives is the geometric one: how far past the
+container's padding edge does the element actually reach.
+
+And one comment that was simply wrong. The `block` variant was written as
+`py-2.5` with a note claiming it reached the 44px tap-target floor. Measured,
+it was **40px** — 10px of padding either side plus a 13.5px line box. Close
+enough to pass a glance, and not the same thing. It is `min-h-11` now, with
+the floor stated explicitly rather than left to emerge from padding, because
+padding that happens to add up is padding that stops adding up the moment the
+font size changes.
+
+### Where mobile stands
+
+Working, at 320 / 360 / 375 / 700 / 1100, signed in and signed out: every page
+free of horizontal overflow, every focusable field at or above the iOS zoom
+floor, both dropdown panels inside the viewport, and all five destinations
+reachable.
+
+Still open, and deferred deliberately: **the journey tree**, which now fits
+only because it scales to 21.7% — labels at 4-6px, tap targets around 10px. It
+needs a different mobile representation rather than a smaller one, and that is
+design work, not a responsive fix.
