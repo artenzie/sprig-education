@@ -135,9 +135,36 @@ export function TopNav() {
                  object literal rather than a JSX expression container. */
               <Link
                 to="/login"
-                className="rounded-full border border-border/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest hover:text-foreground"
+                className="whitespace-nowrap rounded-full border border-border/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest hover:text-foreground"
               >
-                Login / Sign Up
+                {/* Two labels, one link. The full wording needs 149px on one
+                    line and a 375px phone leaves 131px for it, so it wrapped
+                    to two lines inside the pill.
+
+                    Shortening it below sm is the only fix that survives the
+                    widths people actually hold: tightening the tracking and
+                    padding fits 375 and 360 but not 320, and dropping the
+                    "by Artem Makarov" byline to buy room fails at 360 -- a
+                    very ordinary Android width -- as well as costing the
+                    byline.
+
+                    It also fixes a second wrap. The oversized pill was
+                    squeezing the brand, so "by Artem Makarov" was breaking
+                    across two lines too; once the pill is narrow the byline
+                    fits on one by itself.
+
+                    "Sign Up" survives from sm upward, where the reasoning
+                    above still applies and there is room to say it. On a
+                    phone the pill is the only thing in the nav to press, so
+                    "Log in" does not cost anyone the way in -- and /login
+                    still opens on StudentBox's explanation either way.
+
+                    whitespace-nowrap is on the Link rather than either span:
+                    it has to hold for both labels, and it is what turns a
+                    would-be wrap into an honest overflow that shows up in
+                    testing. */}
+                <span className="sm:hidden">Log in</span>
+                <span className="hidden sm:inline">Login / Sign Up</span>
               </Link>
             )}
           </div>
