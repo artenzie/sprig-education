@@ -55,7 +55,7 @@ function Login() {
           <span>Anonymous by design</span>
         </div>
 
-        <div className="mt-10 grid grid-cols-12 gap-16">
+        <div className="mt-10 grid grid-cols-12 gap-x-0 gap-y-10 lg:gap-16">
           <div className="col-span-12 lg:col-span-7">
             <h1 className="font-display text-[54px] font-normal leading-[1.02] tracking-[-0.035em]">
               A quiet <em className="font-normal italic text-forest">door</em>{" "}
@@ -70,7 +70,7 @@ function Login() {
           </div>
         </div>
 
-        <div className="mt-16 grid grid-cols-12 gap-10">
+        <div className="mt-16 grid grid-cols-12 gap-x-0 gap-y-8 lg:gap-10">
           <StudentBox />
           <AdultBox />
         </div>
@@ -411,7 +411,7 @@ function ContactStrip() {
     <div className="mt-20">
       <div className="h-px w-full bg-border/70" />
 
-      <div className="mt-8 grid grid-cols-12 gap-x-10 gap-y-6">
+      <div className="mt-8 grid grid-cols-12 gap-x-0 gap-y-6 lg:gap-x-10">
         <div className="col-span-12 lg:col-span-4">
           <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
             <span>III</span>
@@ -450,7 +450,7 @@ function ContactStrip() {
             </div>
           ) : (
             <form onSubmit={handleSubmit}>
-              <div className="grid grid-cols-12 gap-x-8 gap-y-6">
+              <div className="grid grid-cols-12 gap-x-0 gap-y-6 sm:gap-x-8">
                 <div className="col-span-12 sm:col-span-5">
                   <FieldLine
                     id={CONTACT_FIELD_ID}
@@ -554,7 +554,12 @@ function FieldLine({
         maxLength={maxLength}
         autoComplete={autoComplete}
         disabled={disabled}
-        className="mt-2 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-sans text-[15px] text-foreground placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60"
+        // min-h-11 is 44px, the tap-target floor. Underlined inputs are ~31px
+        // tall from their text plus pb-2, which is comfortable with a mouse and
+        // too small for a thumb -- and these two fields are the whole of a
+        // student's first interaction with Sprig on a phone. Dropped back to
+        // auto at lg so the desktop layout is unchanged.
+        className="mt-2 min-h-11 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-sans text-[15px] text-foreground placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60 lg:min-h-0"
       />
     </label>
   );

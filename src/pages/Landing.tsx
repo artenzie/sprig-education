@@ -27,12 +27,12 @@ function Landing() {
 
       {/* ─────────────── DEFINITION ─────────────── */}
       <section className="mx-auto max-w-[1240px] px-10 py-20">
-        <div className="grid grid-cols-12 gap-16">
+        <div className="grid grid-cols-12 gap-x-0 gap-y-10 lg:gap-16">
           <div className="col-span-12 lg:col-span-4">
             <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
               I &nbsp;·&nbsp; The word
             </div>
-            <h2 className="mt-6 font-display text-[46px] font-normal leading-[1.02] tracking-[-0.03em]">
+            <h2 className="mt-6 font-display text-[32px] font-normal leading-[1.06] tracking-[-0.02em] sm:text-[46px] sm:leading-[1.02] sm:tracking-[-0.03em]">
               sprig
               <span className="ml-3 align-middle font-sans text-[13px] font-normal uppercase tracking-[0.22em] text-muted-foreground">
                 / sprɪɡ / &nbsp;noun
@@ -61,12 +61,12 @@ function Landing() {
 
       {/* ─────────────── WHAT SPRIG IS ─────────────── */}
       <section className="mx-auto max-w-[1240px] px-10 py-24">
-        <div className="grid grid-cols-12 gap-16">
+        <div className="grid grid-cols-12 gap-x-0 gap-y-10 lg:gap-16">
           <div className="col-span-12 lg:col-span-4">
             <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
               II &nbsp;·&nbsp; What Sprig is
             </div>
-            <h2 className="mt-6 font-display text-[46px] font-normal leading-[1.02] tracking-[-0.03em]">
+            <h2 className="mt-6 font-display text-[32px] font-normal leading-[1.06] tracking-[-0.02em] sm:text-[46px] sm:leading-[1.02] sm:tracking-[-0.03em]">
               A free field guide,
               <br />
               <em className="font-normal italic text-forest">not a textbook.</em>
@@ -120,7 +120,7 @@ function Landing() {
 
       {/* ─────────────── ABOUT ME ─────────────── */}
       <section className="mx-auto max-w-[1240px] px-10 py-24">
-        <div className="grid grid-cols-12 gap-16">
+        <div className="grid grid-cols-12 gap-x-0 gap-y-10 lg:gap-16">
           <div className="col-span-12 lg:col-span-5">
             <div
               className="relative aspect-[4/5] w-full overflow-hidden rounded-[28px] border border-border bg-[color:var(--paper)]"
@@ -189,7 +189,7 @@ function Landing() {
             <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
               III &nbsp;·&nbsp; About me
             </div>
-            <h2 className="mt-6 font-display text-[46px] font-normal leading-[1.02] tracking-[-0.03em]">
+            <h2 className="mt-6 font-display text-[32px] font-normal leading-[1.06] tracking-[-0.02em] sm:text-[46px] sm:leading-[1.02] sm:tracking-[-0.03em]">
               {/* Non-breaking space so "international student," wraps as a
                   unit. The heading was written for the shorter "a UK student"
                   and at 46px the longer phrase broke after "international",
@@ -274,12 +274,12 @@ function Landing() {
 
       {/* ─────────────── CONTACT ─────────────── */}
       <section className="mx-auto max-w-[1240px] px-10 py-24">
-        <div className="grid grid-cols-12 gap-16">
+        <div className="grid grid-cols-12 gap-x-0 gap-y-10 lg:gap-16">
           <div className="col-span-12 lg:col-span-4">
             <div className="font-mono text-[10.5px] uppercase tracking-[0.28em] text-muted-foreground">
               IV &nbsp;·&nbsp; Get in touch
             </div>
-            <h2 className="mt-6 font-display text-[46px] font-normal leading-[1.02] tracking-[-0.03em]">
+            <h2 className="mt-6 font-display text-[32px] font-normal leading-[1.06] tracking-[-0.02em] sm:text-[46px] sm:leading-[1.02] sm:tracking-[-0.03em]">
               Say hello.
             </h2>
           </div>
@@ -292,7 +292,13 @@ function Landing() {
 
             <a
               href="mailto:hello@sprig.education"
-              className="group mt-10 inline-flex items-center gap-4"
+              // flex-wrap, because inline-flex will not break a row: the 48px
+              // circle plus the address at 26px needs ~314px and a 375px phone
+              // offers 280px here, so the row simply overhung the viewport.
+              // Wrapping drops the address below the circle, where it fits at
+              // full size -- the alternative was shrinking the type, and this
+              // address is the one call to action on the page.
+              className="group mt-10 inline-flex max-w-full flex-wrap items-center gap-4"
             >
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-forest text-primary-foreground transition-transform group-hover:-translate-y-0.5">
                 <Mail className="h-4 w-4" />

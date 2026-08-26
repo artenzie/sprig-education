@@ -109,7 +109,7 @@ function SetPin() {
           <span>{student?.nickname ?? "Student"}</span>
         </div>
 
-        <div className="mt-10 grid grid-cols-12 gap-16">
+        <div className="mt-10 grid grid-cols-12 gap-x-0 gap-y-10 lg:gap-16">
           <div className="col-span-12 lg:col-span-7">
             <h1 className="font-display text-[54px] font-normal leading-[1.02] tracking-[-0.035em]">
               {forced ? (
@@ -132,7 +132,7 @@ function SetPin() {
           </div>
         </div>
 
-        <div className="mt-14 grid grid-cols-12 gap-10">
+        <div className="mt-14 grid grid-cols-12 gap-x-0 gap-y-8 lg:gap-10">
           <div className="col-span-12 lg:col-span-6">
             <div className="border border-border/70 bg-background/40 p-10">
               <form className="space-y-6" onSubmit={handleSubmit}>
@@ -241,7 +241,11 @@ function PinField({
         value={value}
         disabled={disabled}
         onChange={(e) => onChange(keepDigits(e.target.value))}
-        className="mt-2 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-mono text-[15px] tracking-[0.3em] text-foreground placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60"
+        // min-h-11 (44px) for the same reason as the matching input in
+        // Login.tsx -- see the note there. This one matters slightly more: it is
+        // on the forced first-login screen, so every student hits it before
+        // they can reach anything else.
+        className="mt-2 min-h-11 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-mono text-[15px] tracking-[0.3em] text-foreground placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60 lg:min-h-0"
       />
     </label>
   );

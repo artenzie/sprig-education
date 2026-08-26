@@ -75,7 +75,7 @@ function Dashboard() {
         </div>
       </div>
 
-      <main className="mx-auto grid max-w-[1280px] grid-cols-12 gap-16 px-10 pb-24 pt-10">
+      <main className="mx-auto grid max-w-[1280px] grid-cols-12 gap-x-0 gap-y-10 lg:gap-16 px-10 pb-24 pt-10">
 
         {/* Left editorial rail */}
         <aside className="col-span-12 lg:col-span-3">
@@ -111,7 +111,11 @@ function Dashboard() {
             {/* gap-x-6 as well as gap-y. The sidebar narrowed from col-4 to col-3 when
                 the tree was given more room, and with no column gap "Application"
                 and "IV of V" ran straight into each other. */}
-            <dl className="mt-8 grid grid-cols-2 gap-x-6 gap-y-7">
+            {/* Single column below sm. Two columns of a 280px sidebar leaves
+                ~110px each, and the Next stat is a free-text subtopic title --
+                "How Ads Are Designed to Make You Want Things" came out one word
+                per line. The stats stack on a phone and pair up from sm. */}
+            <dl className="mt-8 grid grid-cols-1 gap-x-6 gap-y-7 sm:grid-cols-2">
               <MetaStat label="Tier" value={currentTopic ? TIER_NAME[currentTopic.tier] ?? "Sprig" : "—"} />
               <MetaStat
                 label="Chapter"

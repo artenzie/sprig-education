@@ -126,7 +126,7 @@ function Topic() {
     <div className="relative min-h-screen bg-background text-foreground">
       <TopNav />
 
-      <main className="mx-auto grid max-w-[1280px] grid-cols-12 gap-16 px-10 pb-24 pt-12">
+      <main className="mx-auto grid max-w-[1280px] grid-cols-12 gap-x-0 gap-y-10 lg:gap-16 px-10 pb-24 pt-12">
         {/* LEFT — sticky editorial rail */}
         <aside className="col-span-12 lg:col-span-5">
           <div className="sticky top-24">
