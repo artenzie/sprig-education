@@ -9,6 +9,7 @@ import {
   HelpCircle,
   KeyRound,
   LogOut,
+  Menu,
   Sparkles,
   CalendarClock,
 } from "lucide-react";
@@ -28,8 +29,15 @@ import {
 export function TopNav() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  // The links in <nav> are `hidden md:flex`, which left phones with no way to
+  // reach Library, Growth, Certificate or Help at all -- an omission rather
+  // than a decision, and one that mattered because the Library is the readable
+  // way around the journey tree on a small screen. This is the third dropdown
+  // in this component and deliberately the same shape as the other two.
+  const [menuOpen, setMenuOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const { status, student } = useAuth();
 
   useEffect(() => {
@@ -37,11 +45,13 @@ export function TopNav() {
       const t = e.target as Node;
       if (notifRef.current && !notifRef.current.contains(t)) setNotifOpen(false);
       if (profileRef.current && !profileRef.current.contains(t)) setProfileOpen(false);
+      if (menuRef.current && !menuRef.current.contains(t)) setMenuOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
         setNotifOpen(false);
         setProfileOpen(false);
+        setMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", onDocClick);
@@ -54,7 +64,10 @@ export function TopNav() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-border/60 bg-background/70 backdrop-blur-md">
-      <div className="mx-auto flex h-[76px] max-w-[1240px] items-center justify-between px-8">
+      {/* px-4 below sm. 64px of side padding is 17% of a 375px screen, and
+          the right-hand cluster needs those 32px back: it is what lets the
+          full "Login / Sign Up" wording stay on one line at phone widths. */}
+      <div className="mx-auto flex h-[76px] max-w-[1240px] items-center justify-between px-4 sm:px-8">
         <div className="flex items-center gap-10">
           <Link to="/" className="flex items-center gap-2.5">
             <SprigMark />
@@ -75,14 +88,46 @@ export function TopNav() {
             <NavItem to="/help" icon={<HelpCircle className="h-4 w-4" />} label="Help" />
           </nav>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative" ref={notifRef}>
+        {/* gap-1 below sm. With the menu button added, 320px screens were 17px
+            short; tightening the gaps here and the pill's own padding closes
+            exactly that, and both are spacing rather than type -- the pill's
+            tracking stays as designed. */}
+        <div className="flex items-center gap-1 sm:gap-2">
+          {/* Sits before the bell so the avatar keeps the far-right corner it
+              has always had. Hidden from md up, which is exactly where <nav>
+              takes over -- the two are never both on screen. */}
+          <div className="relative md:hidden" ref={menuRef}>
+            <button
+              aria-label="Menu"
+              aria-expanded={menuOpen}
+              onClick={() => {
+                setMenuOpen((v) => !v);
+                setNotifOpen(false);
+                setProfileOpen(false);
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+            {menuOpen && <MenuPanel onNavigate={() => setMenuOpen(false)} />}
+          </div>
+          <div
+            className={`relative ${status === "authed" ? "" : "hidden sm:block"}`}
+            ref={notifRef}
+          >
+            {/* Signed out, the bell is hidden below sm. It opens
+                "Announcements", which are written for students, and a visitor
+                with no account has nothing there -- so on the one screen size
+                where space is scarce it is the first thing to go, and those
+                36px are part of what buys back the full login wording.
+                Unchanged from sm up, signed in or out. */}
             <button
               aria-label="Announcements"
               aria-expanded={notifOpen}
               onClick={() => {
                 setNotifOpen((v) => !v);
                 setProfileOpen(false);
+                setMenuOpen(false);
               }}
               className="relative flex h-9 w-9 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
@@ -96,7 +141,7 @@ export function TopNav() {
           </div>
           {/* TopNav also renders on public pages, so there may be nobody
               signed in — in which case the avatar becomes a way in. */}
-          <div className="relative ml-2" ref={profileRef}>
+          <div className="relative ml-0 sm:ml-2" ref={profileRef}>
             {status === "authed" && student ? (
               <>
                 <button
@@ -105,6 +150,7 @@ export function TopNav() {
                   onClick={() => {
                     setProfileOpen((v) => !v);
                     setNotifOpen(false);
+                    setMenuOpen(false);
                   }}
                   className="flex h-9 w-9 items-center justify-center rounded-full bg-forest/10 text-[13px] font-semibold text-forest transition-colors hover:bg-forest/15"
                 >
@@ -135,36 +181,26 @@ export function TopNav() {
                  object literal rather than a JSX expression container. */
               <Link
                 to="/login"
-                className="whitespace-nowrap rounded-full border border-border/70 px-4 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest hover:text-foreground"
+                className="whitespace-nowrap rounded-full border border-border/70 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:border-forest hover:text-foreground sm:px-4"
               >
-                {/* Two labels, one link. The full wording needs 149px on one
-                    line and a 375px phone leaves 131px for it, so it wrapped
-                    to two lines inside the pill.
+                {/* The full wording is back, and it fits because the space
+                    came from around it rather than out of it.
 
-                    Shortening it below sm is the only fix that survives the
-                    widths people actually hold: tightening the tracking and
-                    padding fits 375 and 360 but not 320, and dropping the
-                    "by Artem Makarov" byline to buy room fails at 360 -- a
-                    very ordinary Android width -- as well as costing the
-                    byline.
+                    It needs 149px on one line. Today a 375px phone offers 131,
+                    so it wrapped inside the pill. Two changes pay for the
+                    difference: px-4 on the header returns 32px, and the bell
+                    is hidden below sm when signed out, returning 36 more.
 
-                    It also fixes a second wrap. The oversized pill was
-                    squeezing the brand, so "by Artem Makarov" was breaking
-                    across two lines too; once the pill is narrow the byline
-                    fits on one by itself.
+                    Shrinking the pill itself was the obvious move and is the
+                    wrong one -- tightening tracking-[0.22em] would put this
+                    one label out of step with every other mono kicker in the
+                    design system, to save pixels that the layout around it
+                    can give up without anyone noticing.
 
-                    "Sign Up" survives from sm upward, where the reasoning
-                    above still applies and there is room to say it. On a
-                    phone the pill is the only thing in the nav to press, so
-                    "Log in" does not cost anyone the way in -- and /login
-                    still opens on StudentBox's explanation either way.
-
-                    whitespace-nowrap is on the Link rather than either span:
-                    it has to hold for both labels, and it is what turns a
-                    would-be wrap into an honest overflow that shows up in
-                    testing. */}
-                <span className="sm:hidden">Log in</span>
-                <span className="hidden sm:inline">Login / Sign Up</span>
+                    whitespace-nowrap stays: it turns a would-be wrap into an
+                    overflow, which is visible in testing rather than silently
+                    ugly. */}
+                Login / Sign Up
               </Link>
             )}
           </div>
@@ -204,6 +240,42 @@ const ANNOUNCEMENTS: { icon: React.ReactNode; title: string; date?: string }[] =
     title: "Welcome to Sprig. Start at the trunk and work upwards.",
   },
 ];
+
+/**
+ * The phone-sized version of <nav>.
+ *
+ * The same five destinations, stacked, reusing NavItem so there is one
+ * definition of what a nav link looks like and what "current page" means. The
+ * only change NavItem needed was a `block` variant: side by side it is an
+ * inline pill, stacked it should fill the row so the whole width is tappable.
+ *
+ * ALL FIVE ARE LISTED WHETHER OR NOT ANYONE IS SIGNED IN. Four of them are
+ * behind RequireAuth and will bounce a signed-out visitor to /login, which
+ * reads as a dead end -- but hiding them reads worse. A menu whose contents
+ * change depending on a state the reader cannot see is harder to trust than
+ * one that always says the same thing, and the bounce lands on the page that
+ * explains how to get an account. It also keeps this list identical to the
+ * desktop <nav> above, which is the property that stops the two drifting
+ * apart the next time a page is added.
+ *
+ * Closing on navigate is explicit: React Router swaps the page under the
+ * panel without unmounting it, so without this the menu would still be open
+ * on top of wherever you just went.
+ */
+function MenuPanel({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <div
+      onClick={onNavigate}
+      className="fixed left-3 right-3 top-[84px] z-40 max-h-[70vh] w-auto overflow-y-auto rounded-xl border border-border/70 bg-background p-2 shadow-[0_8px_24px_-16px_rgba(34,41,31,0.25)] sm:absolute sm:left-auto sm:right-0 sm:top-[calc(100%+10px)] sm:max-h-none sm:w-[260px] sm:overflow-hidden"
+    >
+      <NavItem to="/dashboard" icon={<Compass className="h-4 w-4" />} label="Journey" block />
+      <NavItem to="/progress" icon={<Sprout className="h-4 w-4" />} label="Growth" block />
+      <NavItem to="/library" icon={<BookOpen className="h-4 w-4" />} label="Library" block />
+      <NavItem to="/certificate" icon={<Award className="h-4 w-4" />} label="Certificate" block />
+      <NavItem to="/help" icon={<HelpCircle className="h-4 w-4" />} label="Help" block />
+    </div>
+  );
+}
 
 function NotificationsPanel() {
   return (
@@ -423,18 +495,35 @@ function NavItem({
   icon,
   label,
   disabled,
+  block,
 }: {
   to?: string;
   icon: React.ReactNode;
   label: string;
   disabled?: boolean;
+  /**
+   * Stacked rather than side by side, for MenuPanel.
+   *
+   * Two differences, both about the thumb rather than the eye: the row fills
+   * the panel so its whole width is tappable instead of just the text, and
+   * min-h-11 holds it at 44px -- the same tap-target floor the login and PIN
+   * inputs are held to. The floor is explicit rather than left to padding
+   * because padding plus a 13.5px line box lands at 40, which looks close
+   * enough to be missed and is not. Inline in the desktop bar these would
+   * both be wrong, which is why it is a variant and not a change.
+   */
+  block?: boolean;
 }) {
+  const shape = block
+    ? "flex min-h-11 w-full rounded-lg px-3 py-2"
+    : "inline-flex rounded-full px-3.5 py-1.5";
+
   if (disabled || !to) {
     return (
       <span
         aria-disabled="true"
         title="Coming soon"
-        className="inline-flex cursor-not-allowed items-center gap-2 rounded-full px-3.5 py-1.5 text-[13.5px] text-muted-foreground/50"
+        className={`${shape} cursor-not-allowed items-center gap-2 text-[13.5px] text-muted-foreground/50`}
       >
         {icon}
         {label}
@@ -448,7 +537,7 @@ function NavItem({
     <NavLink
       to={to}
       className={({ isActive }) =>
-        `inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-[13.5px] transition-colors hover:bg-secondary hover:text-foreground ${
+        `${shape} items-center gap-2 text-[13.5px] transition-colors hover:bg-secondary hover:text-foreground ${
           isActive ? "bg-forest/10 text-forest" : "text-muted-foreground"
         }`
       }
