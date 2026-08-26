@@ -124,7 +124,7 @@ export function CheckInModal({
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
                 placeholder="Anything you want to share? (optional)"
-                className="w-full resize-none rounded-xl border border-border bg-card/40 px-4 py-3 text-[14px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
+                className="w-full resize-none rounded-xl border border-border bg-card/40 px-4 py-3 text-[16px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
               />
             </div>
 

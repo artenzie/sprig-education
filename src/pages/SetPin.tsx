@@ -245,7 +245,7 @@ function PinField({
         // Login.tsx -- see the note there. This one matters slightly more: it is
         // on the forced first-login screen, so every student hits it before
         // they can reach anything else.
-        className="mt-2 min-h-11 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-mono text-[15px] tracking-[0.3em] text-foreground placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60 lg:min-h-0"
+        className="mt-2 min-h-11 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-mono text-[16px] tracking-[0.3em] text-foreground placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60 lg:min-h-0"
       />
     </label>
   );

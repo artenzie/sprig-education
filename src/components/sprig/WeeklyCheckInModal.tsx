@@ -142,7 +142,7 @@ export function WeeklyCheckInModal({
                 onChange={(e) => setConfusedBy(e.target.value)}
                 rows={2}
                 placeholder="Anything that confused you? (optional)"
-                className="w-full resize-none rounded-xl border border-border bg-card/40 px-4 py-3 text-[14px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
+                className="w-full resize-none rounded-xl border border-border bg-card/40 px-4 py-3 text-[16px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
               />
             </div>
 
@@ -152,7 +152,7 @@ export function WeeklyCheckInModal({
                 onChange={(e) => setLikedMost(e.target.value)}
                 rows={2}
                 placeholder="What was most useful? (optional)"
-                className="w-full resize-none rounded-xl border border-border bg-card/40 px-4 py-3 text-[14px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
+                className="w-full resize-none rounded-xl border border-border bg-card/40 px-4 py-3 text-[16px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
               />
             </div>
 

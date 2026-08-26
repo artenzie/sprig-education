@@ -104,7 +104,7 @@ export function HostStudentTable({
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Filter by nickname or school"
           aria-label="Filter students by nickname or school"
-          className="w-full max-w-sm border-b border-border/70 bg-transparent pb-2 text-[14px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-forest"
+          className="w-full max-w-sm border-b border-border/70 bg-transparent pb-2 text-[16px] text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-forest"
         />
       </div>
 

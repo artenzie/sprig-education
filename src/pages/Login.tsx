@@ -554,12 +554,19 @@ function FieldLine({
         maxLength={maxLength}
         autoComplete={autoComplete}
         disabled={disabled}
+        // Two mobile constraints, both absolute rather than aesthetic:
+        //
         // min-h-11 is 44px, the tap-target floor. Underlined inputs are ~31px
         // tall from their text plus pb-2, which is comfortable with a mouse and
         // too small for a thumb -- and these two fields are the whole of a
         // student's first interaction with Sprig on a phone. Dropped back to
         // auto at lg so the desktop layout is unchanged.
-        className="mt-2 min-h-11 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-sans text-[15px] text-foreground placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60 lg:min-h-0"
+        //
+        // text-[16px] is the iOS zoom floor, and it is NOT dropped back at lg,
+        // because a 1px difference is invisible and a breakpoint here would be
+        // one more place for the floor to be lost. See QuestionCard.tsx for the
+        // full note on why 16px specifically.
+        className="mt-2 min-h-11 w-full border-0 border-b border-border/80 bg-transparent pb-2 font-sans text-[16px] text-foreground placeholder:text-muted-foreground/60 focus:border-forest focus:outline-none disabled:opacity-60 lg:min-h-0"
       />
     </label>
   );

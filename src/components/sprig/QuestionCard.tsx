@@ -48,8 +48,17 @@ export type AnswerResult = {
   response: QuestionResponse;
 };
 
+// 16px is a floor, not a preference. iOS Safari zooms the whole viewport when
+// you focus an input, textarea or select whose computed font-size is below
+// 16px -- and the threshold is absolute, so 15.5px zooms exactly as 12px does.
+// The zoom is not undone on blur: the student answers one numeric question and
+// stays zoomed for the rest of the lesson unless they pinch back out.
+//
+// Every focusable field in Sprig is at or above 16px for this reason (see the
+// matching inputs in Login.tsx, SetPin.tsx, Help.tsx and the two check-in
+// modals). Taking any of them below it re-introduces the zoom.
 const inputClasses =
-  "w-full rounded-xl border border-border bg-transparent px-5 py-4 text-[15px] leading-[1.55] text-foreground/90 outline-none transition-colors focus:border-forest placeholder:text-muted-foreground/60";
+  "w-full rounded-xl border border-border bg-transparent px-5 py-4 text-[16px] leading-[1.55] text-foreground/90 outline-none transition-colors focus:border-forest placeholder:text-muted-foreground/60";
 
 export function QuestionCard({
   question,

@@ -240,7 +240,7 @@ function ContactBox() {
           rows={4}
           maxLength={HELP_MESSAGE_MAX}
           placeholder="Type your question or issue here…"
-          className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-[14.5px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
+          className="w-full resize-none rounded-xl border border-border bg-background px-4 py-3 text-[16px] leading-[1.6] text-foreground placeholder:text-muted-foreground/70 focus:border-forest focus:outline-none"
         />
 
         {/* The FAQ two sections below promises Sprig only ever sees a nickname.
