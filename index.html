@@ -11,8 +11,14 @@
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Sprig" />
     <meta property="og:url" content="https://sprig.education/" />
-    <meta property="og:title" content="Sprig Education" />
-    <meta property="og:description" content="Sprig is a calm, beautifully designed financial literacy journey for younger teenagers who are curious about money. UK-based throughout — pounds, VAT, FSCS and the Bank of England. Learn money, one branch at a time." />
+    <!-- These two deliberately diverge from <title> and meta description
+         above, and should stay diverged. Those two are read by search engines,
+         where the page needs to be findable and to say what it is. These are
+         read by WhatsApp, LinkedIn and Slack, where a link arrives beside a
+         picture with no query behind it and has a sentence or two to be worth
+         opening. Same page, different jobs. -->
+    <meta property="og:title" content="Sprig — a field guide to money" />
+    <meta property="og:description" content="Free, anonymous financial literacy for younger teenagers. Short lessons, real scenarios, no exams — grown one small step at a time." />
 
     <!-- Absolute URL, not /og-image.png: every scraper fetches this from its
          own servers with no page context, so a relative path resolves against
