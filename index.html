@@ -13,7 +13,22 @@
     <meta property="og:url" content="https://sprig.education/" />
     <meta property="og:title" content="Sprig Education" />
     <meta property="og:description" content="Sprig is a calm, beautifully designed financial literacy journey for younger teenagers who are curious about money. UK-based throughout — pounds, VAT, FSCS and the Bank of England. Learn money, one branch at a time." />
-    <meta name="twitter:card" content="summary" />
+
+    <!-- Absolute URL, not /og-image.png: every scraper fetches this from its
+         own servers with no page context, so a relative path resolves against
+         nothing and the card renders blank. Width and height are declared so
+         the card reserves the right shape before the image arrives, which is
+         what stops the first render flashing at the wrong aspect ratio. -->
+    <meta property="og:image" content="https://sprig.education/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- summary_large_image, upgraded from summary: `summary` renders a small
+         square thumbnail and would crop a 1200x630 card to its middle. There
+         must be exactly ONE twitter:card tag -- a second one with a different
+         value does not override the first, it just makes the result depend on
+         which a given crawler reads. -->
+    <meta name="twitter:card" content="summary_large_image" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
