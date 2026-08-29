@@ -4,6 +4,7 @@
  *   node --env-file=.env scripts/create-students.ts 30
  *   node --env-file=.env scripts/create-students.ts 30 --dry-run
  *   node --env-file=.env scripts/create-students.ts 30 --teacher <uuid>
+ *   node --env-file=.env scripts/create-students.ts --nickname "Robin"
  *
  * Run locally, never deployed. Two reasons it has to be a script rather than a
  * page in the app:
@@ -59,10 +60,28 @@ async function main() {
   const args = process.argv.slice(2);
   const dryRun = args.includes("--dry-run");
   const teacherId = valueOf(args, "--teacher");
+  const requested = valueOf(args, "--nickname");
   const count = Number(args.find((arg) => /^\d+$/.test(arg)));
 
-  if (!count || count < 1) {
-    fail("Usage: node --env-file=.env scripts/create-students.ts <count> [--teacher <uuid>] [--dry-run]");
+  // --nickname names one account outright instead of drawing it from the pool.
+  // It exists for the accounts somebody has to be able to find again by name —
+  // a pilot walkthrough, a demo account, a student re-added after theirs was
+  // deleted — where a pool nickname like "Frosty Lapwing" is something you'd
+  // have to go and look up. It changes nothing else: the account still starts
+  // on DEFAULT_PIN with must_change_pin set, exactly like its classmates.
+  //
+  // A count alongside it is rejected rather than quietly ignored, because the
+  // two readings ("one student called Robin" and "30 students, one of them
+  // called Robin") are both plausible and silently picking one would create
+  // the wrong number of accounts.
+  if (requested !== undefined && count) {
+    fail("Pass a count or --nickname, not both — --nickname always creates exactly one student.");
+  }
+  if (requested === undefined && (!count || count < 1)) {
+    fail(
+      "Usage: node --env-file=.env scripts/create-students.ts <count> [--teacher <uuid>] [--dry-run]\n" +
+        '   or: node --env-file=.env scripts/create-students.ts --nickname "Robin" [--teacher <uuid>] [--dry-run]',
+    );
   }
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     fail(
@@ -112,7 +131,7 @@ async function main() {
   }
 
   const taken = new Set((existing ?? []).map((row) => nicknameToSlug(row.nickname)));
-  const nicknames = pickNicknames(count, taken);
+  const nicknames = requested === undefined ? pickNicknames(count, taken) : [checkNickname(requested, taken)];
 
   console.log(`\n${dryRun ? "Would create" : "Creating"} ${nicknames.length} student${nicknames.length === 1 ? "" : "s"}:\n`);
 
@@ -190,6 +209,37 @@ async function main() {
       `Everyone starts on PIN ${DEFAULT_PIN} and must change it at first login.\n` +
       `That file is gitignored — delete it once the PINs have been distributed.\n`,
   );
+}
+
+/**
+ * Vet a nickname that was asked for by name, and hand back the tidied form.
+ *
+ * pickNicknames() can't produce a bad nickname — it only ever emits pairs from
+ * the word lists, filtered against what's taken. A nickname typed on the
+ * command line has neither guarantee, so the two checks the pool gets for free
+ * have to be made explicitly here, before anything is written.
+ *
+ * Both failures are worth catching early because their natural error messages
+ * are about the synthetic address rather than the nickname. A nickname with no
+ * letters or digits slugs to an empty string and makes nicknameToEmail throw
+ * mid-loop; a slug that's already taken is refused by Supabase as a duplicate
+ * email — talking about an address the student never sees, for a collision
+ * that is really "these two nicknames are the same login".
+ *
+ * Note it's the SLUG that has to be unique, not the nickname: "Robin" and
+ * "robin" are different strings and the same account.
+ */
+function checkNickname(nickname: string, taken: Set<string>): string {
+  const trimmed = nickname.trim();
+  const slug = nicknameToSlug(trimmed);
+
+  if (!slug) {
+    fail(`"${nickname}" has no letters or digits in it, so there is no address to create it under.`);
+  }
+  if (taken.has(slug)) {
+    fail(`A student whose nickname slugs to "${slug}" already exists — they would share a login with "${trimmed}".`);
+  }
+  return trimmed;
 }
 
 /** Distinct nicknames that don't collide with anything already in the table. */
