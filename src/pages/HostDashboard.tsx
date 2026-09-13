@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/auth";
 import { fetchHostData, type HostData } from "@/lib/hostData";
 import {
@@ -17,6 +18,12 @@ import { HostSatisfaction } from "@/components/sprig/host/HostSatisfaction";
 import { HostFeedbackInbox } from "@/components/sprig/host/HostFeedbackInbox";
 import { HostContactRequests } from "@/components/sprig/host/HostContactRequests";
 import { HostTestPerformance } from "@/components/sprig/host/HostTestPerformance";
+
+/**
+ * The host's personal 100%-complete preview student (created 13 Sep 2026).
+ * Not the pilot account, which belongs to a school.
+ */
+const PREVIEW_NICKNAME = "Demo";
 
 /**
  * The whole pilot, on one page.
@@ -43,6 +50,17 @@ import { HostTestPerformance } from "@/components/sprig/host/HostTestPerformance
  */
 function HostDashboard() {
   const { teacher, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  // A shortcut, not a way in. It ends the host session and opens the ordinary
+  // student login with the nickname typed for you — the PIN is still yours to
+  // enter, and nothing about what either account can read changes. The
+  // nickname travels in router state rather than the URL so it isn't left in
+  // the address bar or history.
+  async function viewAsStudent() {
+    await signOut();
+    navigate("/login", { replace: true, state: { nickname: PREVIEW_NICKNAME } });
+  }
 
   const [data, setData] = useState<HostData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,10 +127,16 @@ function HostDashboard() {
       <header className="border-b border-border/60">
         <div className="mx-auto flex max-w-[1180px] items-center justify-between px-10 py-5">
           <span className="font-display text-[19px] font-normal tracking-[-0.02em]">Sprig</span>
-          <div className="flex items-center gap-7">
+          <div className="flex flex-wrap items-center justify-end gap-x-7 gap-y-2">
             <span className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground">
               Host · {teacher?.email}
             </span>
+            <button
+              onClick={() => void viewAsStudent()}
+              className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"
+            >
+              View as student ({PREVIEW_NICKNAME})
+            </button>
             <button
               onClick={() => void signOut()}
               className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"

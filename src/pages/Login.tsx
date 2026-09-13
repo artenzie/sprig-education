@@ -29,6 +29,14 @@ function landingFor(role: Role, teacher: Teacher | null): string {
 
 function Login() {
   const { status, role, teacher } = useAuth();
+  const location = useLocation();
+
+  // The host dashboard's "View as student" shortcut signs out and then
+  // navigates here with a nickname in router state. Signing out also trips
+  // RequireHost, which may redirect here first with no nickname, so the form
+  // can already be mounted with an empty field by the time the nickname
+  // arrives. Keying StudentBox on it remounts the form so the value lands.
+  const prefilledNickname = (location.state as { nickname?: string } | null)?.nickname ?? "";
 
   // Already signed in — no reason to show them a login form. Which half of the
   // app they belong to is decided by which table has a row for them, so this
@@ -71,7 +79,7 @@ function Login() {
         </div>
 
         <div className="mt-16 grid grid-cols-12 gap-x-0 gap-y-8 lg:gap-10">
-          <StudentBox />
+          <StudentBox key={prefilledNickname} prefilledNickname={prefilledNickname} />
           <AdultBox />
         </div>
 
@@ -87,12 +95,12 @@ function Login() {
   );
 }
 
-function StudentBox() {
+function StudentBox({ prefilledNickname }: { prefilledNickname: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { signInWithNickname } = useAuth();
 
-  const [nickname, setNickname] = useState("");
+  const [nickname, setNickname] = useState(prefilledNickname);
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -158,6 +166,7 @@ function StudentBox() {
             inputMode="numeric"
             maxLength={PIN_LENGTH}
             autoComplete="current-password"
+            autoFocus={prefilledNickname !== ""}
             disabled={pending}
           />
 
@@ -525,6 +534,7 @@ function FieldLine({
   inputMode,
   maxLength,
   autoComplete,
+  autoFocus,
   disabled,
 }: {
   /** Only set where something needs to link to the field — see CONTACT_FIELD_ID. */
@@ -537,6 +547,7 @@ function FieldLine({
   inputMode?: "text" | "numeric";
   maxLength?: number;
   autoComplete?: string;
+  autoFocus?: boolean;
   disabled?: boolean;
 }) {
   return (
@@ -553,6 +564,7 @@ function FieldLine({
         inputMode={inputMode}
         maxLength={maxLength}
         autoComplete={autoComplete}
+        autoFocus={autoFocus}
         disabled={disabled}
         // Two mobile constraints, both absolute rather than aesthetic:
         //
