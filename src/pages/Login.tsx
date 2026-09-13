@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ArrowUpRight } from "lucide-react";
 import { TopNav } from "@/components/sprig/TopNav";
@@ -6,6 +6,7 @@ import { useAuth } from "@/context/auth";
 import type { Role, Teacher } from "@/context/auth";
 import { PIN_LENGTH, keepDigits } from "@/lib/studentAuth";
 import { submitContactRequest, CONTACT_MESSAGE_MAX } from "@/lib/contact";
+import { clearPreviewNickname, peekPreviewNickname } from "@/lib/previewLogin";
 
 /**
  * Where a signed-in account belongs.
@@ -29,14 +30,6 @@ function landingFor(role: Role, teacher: Teacher | null): string {
 
 function Login() {
   const { status, role, teacher } = useAuth();
-  const location = useLocation();
-
-  // The host dashboard's "View as student" shortcut signs out and then
-  // navigates here with a nickname in router state. Signing out also trips
-  // RequireHost, which may redirect here first with no nickname, so the form
-  // can already be mounted with an empty field by the time the nickname
-  // arrives. Keying StudentBox on it remounts the form so the value lands.
-  const prefilledNickname = (location.state as { nickname?: string } | null)?.nickname ?? "";
 
   // Already signed in — no reason to show them a login form. Which half of the
   // app they belong to is decided by which table has a row for them, so this
@@ -79,7 +72,7 @@ function Login() {
         </div>
 
         <div className="mt-16 grid grid-cols-12 gap-x-0 gap-y-8 lg:gap-10">
-          <StudentBox key={prefilledNickname} prefilledNickname={prefilledNickname} />
+          <StudentBox />
           <AdultBox />
         </div>
 
@@ -95,10 +88,18 @@ function Login() {
   );
 }
 
-function StudentBox({ prefilledNickname }: { prefilledNickname: string }) {
+function StudentBox() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signInWithNickname } = useAuth();
+
+  // Left by the host dashboard's "View as student" shortcut — see
+  // src/lib/previewLogin.ts for why it isn't router state. Read once on mount,
+  // then cleared, so it prefills this visit and no later one.
+  const [prefilledNickname] = useState(peekPreviewNickname);
+  useEffect(() => {
+    clearPreviewNickname();
+  }, []);
 
   const [nickname, setNickname] = useState(prefilledNickname);
   const [pin, setPin] = useState("");
@@ -121,8 +122,12 @@ function StudentBox({ prefilledNickname }: { prefilledNickname: string }) {
         return;
       }
 
-      // If they were bounced here from somewhere specific, send them back.
-      const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
+      // If they were bounced here from somewhere specific, send them back —
+      // except via the preview shortcut, where "somewhere" is /host, which a
+      // student would only be bounced away from again.
+      const from = prefilledNickname
+        ? undefined
+        : (location.state as { from?: { pathname?: string } } | null)?.from?.pathname;
       navigate(from ?? "/dashboard", { replace: true });
     } finally {
       setPending(false);

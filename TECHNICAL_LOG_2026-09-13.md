@@ -71,3 +71,54 @@ the PIN.
   typed only by Artem.
 - Signing in as Demo, because the first login uses up the `000000` PIN change,
   and that PIN should be Artem's to choose.
+
+## Follow-up: the pre-fill didn't work, and why the first test missed it
+
+Artem clicked the button for real: logged out, landed on `/login`, empty field.
+
+### The actual cause: the router applies location changes as transitions
+
+In React Router 7.18, `BrowserRouter` wraps every location update in
+`React.startTransition`, which marks it low priority. The auth change from
+`signOut()` is an ordinary, urgent state update. So after the click:
+
+1. `signOut()` flips auth to "anon" (urgent).
+2. `navigate("/login", { state: { nickname } })` writes the history entry
+   straight away, but React's re-render for it is queued as a transition.
+3. React renders the urgent update first, still believing it's on `/host`.
+   `RequireHost` sees "anon" and renders `<Navigate to="/login" replace />`.
+4. That `<Navigate>` runs `history.replace` and **overwrites** the entry that
+   carried the nickname.
+
+The `key` fix from earlier handled a different ordering, where our navigation
+arrives *second*. Here it arrives first and gets erased, so there's nothing to
+remount with.
+
+### Why the first test passed
+
+It pushed a history entry by hand and fired `popstate`. Nobody signed out, so
+`RequireHost` never raced anything. The test checked the half of the flow that
+worked and skipped the half that didn't. The lesson: **a test has to include the
+thing that causes the bug.** Here that thing was signing out.
+
+### The fix: take the router out of it
+
+The nickname now goes in `sessionStorage` (`src/lib/previewLogin.ts`):
+
+- The button stores `"Demo"`, then signs out, and **doesn't navigate at all**.
+  `RequireHost`'s own redirect is what takes you to `/login`, so there's only
+  one navigation and nothing to race.
+- `StudentBox` reads the value in its `useState` initialiser and removes it in
+  a mount effect. Reading and removing are separate steps because StrictMode
+  runs initialisers twice in development. If the first call removed the value,
+  the second call would get nothing, and React might keep that second result.
+- `sessionStorage` is per tab, and the value is gone as soon as the form has
+  read it, so a later visit to `/login` starts empty.
+- The redirect's `from: /host` is ignored for this path, so a successful login
+  goes to `/dashboard` instead of bouncing off `/host`.
+
+Checked in the dev server (StrictMode on) by storing the value, then loading
+`/host` while signed out, so the real guard redirect ran. Result: router state
+held only `from`, the field read "Demo", the PIN field had focus, and storage
+was empty afterwards. Reloading `/login` showed an empty field. The one piece
+still untested here is the click itself, which needs the host password.

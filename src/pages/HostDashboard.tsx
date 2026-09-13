@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/auth";
+import { setPreviewNickname } from "@/lib/previewLogin";
 import { fetchHostData, type HostData } from "@/lib/hostData";
 import {
   cohortScores,
@@ -50,16 +50,15 @@ const PREVIEW_NICKNAME = "Demo";
  */
 function HostDashboard() {
   const { teacher, signOut } = useAuth();
-  const navigate = useNavigate();
 
-  // A shortcut, not a way in. It ends the host session and opens the ordinary
-  // student login with the nickname typed for you — the PIN is still yours to
-  // enter, and nothing about what either account can read changes. The
-  // nickname travels in router state rather than the URL so it isn't left in
-  // the address bar or history.
-  async function viewAsStudent() {
-    await signOut();
-    navigate("/login", { replace: true, state: { nickname: PREVIEW_NICKNAME } });
+  // A shortcut, not a way in. It ends the host session and leaves the nickname
+  // for the ordinary student login to pick up — the PIN is still yours to
+  // enter, and nothing about what either account can read changes. There is
+  // deliberately no navigate() here: signing out makes RequireHost redirect to
+  // /login, and a second navigation races it (see src/lib/previewLogin.ts).
+  function viewAsStudent() {
+    setPreviewNickname(PREVIEW_NICKNAME);
+    void signOut();
   }
 
   const [data, setData] = useState<HostData | null>(null);
@@ -132,7 +131,7 @@ function HostDashboard() {
               Host · {teacher?.email}
             </span>
             <button
-              onClick={() => void viewAsStudent()}
+              onClick={viewAsStudent}
               className="font-mono text-[10.5px] uppercase tracking-[0.22em] text-muted-foreground transition-colors hover:text-foreground"
             >
               View as student ({PREVIEW_NICKNAME})
