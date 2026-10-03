@@ -28,8 +28,7 @@ React 19, TypeScript, Vite, Tailwind v4, Supabase (Postgres, Auth, RLS), Vercel
   role through the public API, not the service key
 
 ## Engineering notes
-`TECHNICAL_LOG_*.md` records the build day by day: bugs, root causes, and what
-each one taught. Start with the 20 August log.
+`TECHNICAL_LOG_*.md` records the build day by day: bugs, root causes, and what each one taught. They were written by Claude Code, the AI coding assistant I built Sprig with, at the end of each session. The product decisions, the content and the testing were mine. Start with the 20 August log.
 
 ## Licence
 All rights reserved. The code is public to read, not to reuse. See LICENSE.
