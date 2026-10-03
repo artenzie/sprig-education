@@ -1,0 +1,25 @@
+title = "Sprig gitleaks config"
+
+# Keep every default rule; this file only adds an allowlist on top.
+[extend]
+useDefault = true
+
+# PASSWORD_ALPHABET is the character set generatePassword() draws characters
+# FROM -- O, 0, I, l and 1 removed so a teacher can read a password off a screen
+# and retype it. It is not a secret; gitleaks' generic-api-key rule flags it
+# because an alphabet has maximal entropy (5.83) by construction.
+#
+# Scoped by path AND regex rather than by commit fingerprint, so it keeps working
+# when the line moves, the file is reformatted, or history is rewritten -- a
+# fingerprint is commit-specific and the scrub changes every commit SHA.
+#
+# condition = "AND" is load-bearing. The default is "OR", which would mean
+# "allowlist anything in this path OR anything matching this regex" -- that would
+# silence every future finding in create-teacher.ts, the one file that handles
+# generated passwords and the service-role key.
+[[allowlists]]
+description = "PASSWORD_ALPHABET constant in create-teacher.ts is a character set, not a credential"
+condition = "AND"
+paths = ['''scripts/create-teacher\.ts$''']
+regexTarget = "line"
+regexes = ['''^\s*const PASSWORD_ALPHABET\s*=''']
