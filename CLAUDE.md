@@ -45,7 +45,7 @@ Sprig is a free financial literacy web platform for younger teenagers, with UK-b
 - **Feel**: calm, editorial, botanical — inspired by Notion, Linear, Apple HIG, premium editorial design
 - **Avoid**: generic AI-design patterns — purple-blue gradients, bubble buttons, centered-everything layouts, card-grid overuse, cartoonish elements
 - **Core visual metaphor**: a growing tree/plant represents student progress. The trunk is Tier 1 (Essentials); it forks into three canopy branches — Application, Mathematics, Mastery — for Tiers 2–4.
-- **Mobile is done**, not deferred: every page is laid out for phone widths, which is where a school pilot actually happens.
+- **Mobile:** every page fits phone widths, and the critical path (login, lessons, tests, Library) works at 375px. The journey tree itself is still tiny on a phone; a dedicated mobile view is future work, and the Library is the readable route to every lesson.
 
 ## Content structure
 
